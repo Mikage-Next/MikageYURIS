@@ -16,7 +16,8 @@
 //! ```
 //!
 //! SNP (`YSSNP.DLL`) is raw Snappy: a varint with the unpacked length, then
-//! literal and copy elements.
+//! literal and copy elements. Games without YSSNP.DLL store zlib instead
+//! (see [`unpack_payload`]).
 
 use yuris_core::{Error, Result};
 
@@ -255,6 +256,20 @@ fn snp_literal(out: &mut Vec<u8>, lit: &[u8]) {
 ///
 /// 字面量长度 = `(tag>>2)+1`；copy1/2/4 与标准 snappy 一致
 ///（YSSNP.DLL `FUN_10001d40` + 派发表 `DAT_1000ba40` 实锤）。
+/// Unpacks a block payload. Engines with YSSNP.DLL use SNP; others (such
+/// as 開発三昧 HD, 480) store zlib streams, recognised by their header and
+/// a clean inflate.
+pub fn unpack_payload(src: &[u8]) -> Result<Vec<u8>> {
+    if src.len() >= 2 && src[0] & 0x0f == 8 && (u16::from(src[0]) << 8 | u16::from(src[1])) % 31 == 0 {
+        use std::io::Read;
+        let mut out = Vec::new();
+        if flate2::read::ZlibDecoder::new(src).read_to_end(&mut out).is_ok() {
+            return Ok(out);
+        }
+    }
+    snp_uncompress(src)
+}
+
 pub fn snp_uncompress(src: &[u8]) -> Result<Vec<u8>> {
     // varint 未压长度（最多 5 字节）
     let mut expected: u64 = 0;

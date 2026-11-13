@@ -210,24 +210,47 @@ impl YpfEntry {
 /// Trail bytes of CP932 double-byte characters stay as they are, since
 /// they can fall on `A`..`Z` and `\`.
 pub fn normalize_name(name: &[u8]) -> Vec<u8> {
-    let mut out = Vec::with_capacity(name.len());
+    // Segments split at real separators (a Shift-JIS trail byte can be
+    // 0x5C). Empty and `.` segments drop out and `..` removes the one
+    // before it: scripts build paths like `se//../voice/x`.
+    let mut segs: Vec<Vec<u8>> = vec![Vec::new()];
+    let mut dotted = false;
     let mut i = 0;
     while i < name.len() {
         let b = name[i];
         if is_sjis_lead(b) && i + 1 < name.len() {
-            out.push(b);
-            out.push(name[i + 1]);
+            let seg = segs.last_mut().unwrap();
+            seg.push(b);
+            seg.push(name[i + 1]);
             i += 2;
             continue;
         }
-        out.push(match b {
-            b'/' => b'\\',
-            b'A'..=b'Z' => b + 32,
-            _ => b,
-        });
+        match b {
+            b'/' | b'\\' => segs.push(Vec::new()),
+            b'A'..=b'Z' => segs.last_mut().unwrap().push(b + 32),
+            _ => {
+                dotted |= b == b'.';
+                segs.last_mut().unwrap().push(b)
+            }
+        }
         i += 1;
     }
-    out
+    let plain = segs.len() == 1 || (!dotted && segs.iter().all(|s| !s.is_empty()));
+    let mut kept: Vec<Vec<u8>> = Vec::with_capacity(segs.len());
+    for seg in segs {
+        if plain {
+            kept.push(seg);
+            continue;
+        }
+        match seg.as_slice() {
+            b"" | b"." => {}
+            b".." => {
+                kept.pop();
+            }
+            _ => kept.push(seg),
+        }
+    }
+    kept.join(&b'\\')
 }
 
 fn is_sjis_lead(b: u8) -> bool {
@@ -758,5 +781,18 @@ mod tests {
         assert_eq!(r.read(b"ysbin\\ysc.ybn").unwrap(), b"YSCM");
         assert!(YpfReader::open_at(&p, base, outer.len() as u64, String::new(), None).is_err());
         std::fs::remove_dir_all(&dir).ok();
+    }
+}
+
+#[cfg(test)]
+mod normalize_tests {
+    use super::normalize_name;
+
+    #[test]
+    fn relative_segments_collapse() {
+        assert_eq!(normalize_name(b"se//../voice/REM_SYS_0001"), b"voice\\rem_sys_0001");
+        assert_eq!(normalize_name(b"cg/./a.png"), b"cg\\a.png");
+        // 表 is 95 5C in Shift-JIS: the trail byte is not a separator.
+        assert_eq!(normalize_name(b"cg/\x95\x5c.png"), b"cg\\\x95\x5c.png");
     }
 }

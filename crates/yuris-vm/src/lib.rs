@@ -3976,7 +3976,7 @@ impl GroupVm {
 
     /// Replaces the memory slots with a [`Self::mem_slots_block`] dump.
     fn restore_mem_slots(&mut self, block: &yuris_format::yssd::YssdBlock) -> Result<()> {
-        let raw = yuris_format::yssd::snp_uncompress(&block.compressed)
+        let raw = yuris_format::yssd::unpack_payload(&block.compressed)
             .map_err(|e| Error::format(format!("memory slot block: {e}")))?;
         fn take<'a>(rest: &mut &'a [u8], n: usize) -> Result<&'a [u8]> {
             if rest.len() < n {
@@ -4126,7 +4126,7 @@ impl GroupVm {
                 block.btype
             )));
         }
-        let data = yuris_format::yssd::snp_uncompress(&block.compressed)
+        let data = yuris_format::yssd::unpack_payload(&block.compressed)
             .map_err(|e| Error::format(format!("{name} block {dno}: {e}")))?;
         if !self.native.load_layer(id, &data) {
             return Err(Error::format(format!(
@@ -4215,7 +4215,7 @@ impl GroupVm {
                 format!("LOAD 块类型 {} 未实现(多子块族;语料未出现)", block.btype),
             ));
         }
-        let raw = yuris_format::yssd::snp_uncompress(&block.compressed)
+        let raw = yuris_format::yssd::unpack_payload(&block.compressed)
             .map_err(|e| Error::format(format!("LOAD {name} 块{dno}: {e}")))?;
         let payload = yuris_format::yssd::YssdPayload::from_bytes(&raw)
             .map_err(|e| Error::format(format!("LOAD {name} 块{dno}: {e}")))?;
