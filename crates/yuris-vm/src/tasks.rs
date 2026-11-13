@@ -598,10 +598,11 @@ impl GroupVm {
             });
         };
         let t = &self.tasks[i];
-        let (sid, pc, frames) = match &t.saved {
-            Some(s) => (s.ctx.script_id, s.pc, &s.frames),
-            None => (self.ctx.script_id, self.pc, &self.frames),
+        let (ctx, pc, frames) = match &t.saved {
+            Some(s) => (&s.ctx, s.pc, &s.frames),
+            None => (&self.ctx, self.pc, &self.frames),
         };
+        let sid = ctx.script_id;
         let base_sid = frames.first().map(|f| f.script_id);
         let file = |sid: u16| {
             self.script_list
@@ -622,7 +623,7 @@ impl GroupVm {
             10 => Value::Int(i64::from(base_sid.unwrap_or(sid))),
             11 => Value::Int(0),
             12 => Value::Int(t.text_line),
-            13 => Value::Int(0),
+            13 => Value::Int(next_text_voiced(ctx, pc) as i64),
             19 => Value::Str(format_script_pos(sid, pc, frames)),
             _ => return None,
         })
@@ -638,6 +639,60 @@ impl GroupVm {
         self.apply_ysvr_for_script(script_id)?;
         Ok(ctx)
     }
+}
+
+/// TASKINFO NEXTVOICE: whether the next text of a task that waits on its
+/// text has a voice.
+///
+/// A task stops on the first command after a line's RETURNCODE, so its pc
+/// is where the next text's setup starts. The engine's own rule is not
+/// known (its exe has no notion of voices); this follows the scripts. ERIS
+/// games set a line's voice with `GOSUB es.VoiceSet "<file>" ...` right
+/// before its WORD, so the next text is voiced when such a call with a
+/// non-empty file comes before the next WORD. Checked against Kaihatsu
+/// Zanmai 2010's next voice icon under Wine.
+fn next_text_voiced(ctx: &ScriptCtx, pc: usize) -> bool {
+    use crate::cmd;
+    use yuris_script::Insn;
+    let literal = |w: &yuris_format::ystb::CommandSlot| -> Option<Vec<u8>> {
+        let bytes = ctx.script.window_bytes_pooled_copy(w)?;
+        match yuris_script::decode_window(&bytes).ok()?.as_slice() {
+            [one] => match &one.kind {
+                Insn::PushStr(p) => Some(yuris_script::eval::decode_pushstr(p)),
+                _ => None,
+            },
+            _ => None,
+        }
+    };
+    let slots = ctx.script.slots();
+    for (i, g) in ctx.groups.iter().enumerate().skip(pc).take(64) {
+        match g.command_type {
+            cmd::WORD | cmd::PRINT | cmd::GO | cmd::RETURN | cmd::END => return false,
+            cmd::GOSUB => {
+                let first = ctx.first_slots[i];
+                let Some(windows) = slots.get(first..first + g.window_count as usize) else {
+                    continue;
+                };
+                let label = windows
+                    .iter()
+                    .filter(|w| w.tag & 0xff == 0 && w.len > 0)
+                    .find_map(|w| literal(w));
+                let is_voice_set = label.is_some_and(|l| l.eq_ignore_ascii_case(b"es.VoiceSet"));
+                if !is_voice_set {
+                    continue;
+                }
+                let file = windows
+                    .iter()
+                    .filter(|w| w.tag & 0xff != 0 && w.len > 0)
+                    .find_map(|w| literal(w));
+                if file.is_some_and(|f| !f.is_empty() && f != b"_") {
+                    return true;
+                }
+            }
+            _ => {}
+        }
+    }
+    false
 }
 
 /// TINT/TFLT/TSTR into the entry frame's `@_PINT`/`@_PFLT`/`$_PSTR`
