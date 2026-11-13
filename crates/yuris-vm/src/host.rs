@@ -95,12 +95,43 @@ pub struct FsScriptHost {
     /// Script XOR key (4 bytes, cyclic; differs per game).
     key: [u8; 4],
     cache: HashMap<u16, ScriptCtx>,
+    /// The game's RETURNCODE command index (pre-300 scripts encode its
+    /// argument differently).
+    returncode: Option<u8>,
+}
+
+/// The RETURNCODE index in the game's `ysbin\ysc.ybn`, if any.
+pub fn game_returncode(fs: &GameFs) -> Option<u8> {
+    let yscm = yuris_format::yscm::YscmTable::from_bytes(&fs.read("ysbin\\ysc.ybn").ok()?).ok()?;
+    let i = yscm.commands().iter().position(|c| c.name.eq_ignore_ascii_case("RETURNCODE"))?;
+    u8::try_from(i).ok()
+}
+
+/// Parses a script file: the split layout, or the pre-300 layout with the
+/// game's RETURNCODE index.
+pub fn parse_script(bytes: &[u8], key: [u8; 4], returncode: Option<u8>) -> Result<YstbFile> {
+    let legacy = bytes.get(4..8).map(|v| u32::from_le_bytes(v.try_into().unwrap()))
+        .is_some_and(|v| v < yuris_format::ystb::SPLIT_LAYOUT_VERSION);
+    if legacy {
+        YstbFile::from_legacy_bytes(bytes, key, returncode)
+    } else {
+        YstbFile::from_bytes(bytes, key)
+    }
 }
 
 impl FsScriptHost {
     /// Creates a host with the given key.
     pub fn new(fs: Arc<GameFs>, key: [u8; 4]) -> Self {
-        Self { fs, key, cache: HashMap::new() }
+        let returncode = game_returncode(&fs);
+        Self { fs, key, cache: HashMap::new(), returncode }
+    }
+
+    /// A script context without cloning it (loads it into the cache first).
+    pub fn peek(&mut self, id: u16) -> Result<&ScriptCtx> {
+        if !self.cache.contains_key(&id) {
+            self.load(id)?;
+        }
+        Ok(&self.cache[&id])
     }
 
     /// The script key.
@@ -140,9 +171,10 @@ pub fn list_script_ids(fs: &GameFs) -> Vec<u16> {
 /// most common key.
 pub fn guess_script_key(fs: &GameFs) -> Result<[u8; 4]> {
     let mut votes: HashMap<[u8; 4], usize> = HashMap::new();
+    let returncode = game_returncode(fs);
     for id in list_script_ids(fs).into_iter().take(16) {
         let Ok(bytes) = fs.read(&script_path(id)) else { continue };
-        if let Ok((k, _)) = yuris_format::ystb::guess_key(&bytes) {
+        if let Ok((k, _)) = yuris_format::ystb::guess_key_with(&bytes, returncode) {
             *votes.entry(k).or_default() += 1;
         }
     }
@@ -159,7 +191,7 @@ impl ScriptHost for FsScriptHost {
             return Ok(ctx.clone());
         }
         let bytes = self.fs.read(&script_path(id))?;
-        let script = yuris_format::ystb::YstbFile::from_bytes(&bytes, self.key)?;
+        let script = parse_script(&bytes, self.key, self.returncode)?;
         let ctx = ScriptCtx::parse(id, script)?;
         self.cache.insert(id, ctx.clone());
         Ok(ctx)

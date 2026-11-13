@@ -145,7 +145,8 @@ impl Bootstrap {
             Error::format(format!("entry label not found: {:?}", String::from_utf8_lossy(entry)))
         })?;
         let label = &yslb.labels()[entry_idx];
-        let (entry_pc, script_id) = (label.target_pc, label.script_id);
+        let script_id = label.script_id;
+        let entry_pc = legacy_label_pc(&mut host, label.target_pc, script_id)?;
 
         // Read YSVR before the host moves into the VM.
         *stage = "variable_table";
@@ -180,7 +181,8 @@ impl Bootstrap {
         // Labels: name -> (target_pc, script_id)
         let mut labels: HashMap<Vec<u8>, (u32, u16)> = HashMap::new();
         for l in yslb.labels() {
-            labels.insert(l.name.clone(), (l.target_pc, l.script_id));
+            let pc = legacy_label_pc(&mut host, l.target_pc, l.script_id).unwrap_or(l.target_pc);
+            labels.insert(l.name.clone(), (pc, l.script_id));
         }
         vm.set_labels(labels);
 
@@ -344,4 +346,16 @@ mod map_selection_tests {
         r.ysvr_fingerprint = None;
         assert_eq!(select_system_var_map(&r, false).0, SystemVarMap::Unknown);
     }
+}
+
+/// Pre-300 label positions are byte offsets into the script's command
+/// section; returns the command index. Split-layout positions pass through.
+fn legacy_label_pc(host: &mut FsScriptHost, pc: u32, script_id: u16) -> Result<u32> {
+    let ctx = host.peek(script_id)?;
+    if !ctx.script.is_legacy() {
+        return Ok(pc);
+    }
+    ctx.script.pc_for_offset(pc).map(|i| i as u32).ok_or_else(|| {
+        Error::format(format!("label offset {pc:#x} is not a command start in script {script_id}"))
+    })
 }

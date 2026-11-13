@@ -66,7 +66,9 @@ impl YstlTable {
         }
         let version = r.u32_le()?;
         let count = r.u32_le()? as usize;
-        if count > r.remaining() / 28 {
+        // The text count was added in 474.
+        let has_texts = version >= 474;
+        if count > r.remaining() / 24 {
             return Err(Error::format(format!("YSTL count {count} too large")));
         }
         let mut entries = Vec::with_capacity(count);
@@ -82,7 +84,7 @@ impl YstlTable {
                 timestamp: lo | (hi << 32),
                 variables: r.u32_le()? as i32,
                 labels: r.u32_le()? as i32,
-                texts: r.u32_le()? as i32,
+                texts: if has_texts { r.u32_le()? as i32 } else { 0 },
             });
         }
         if r.remaining() != 0 {

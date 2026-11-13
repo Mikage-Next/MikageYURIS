@@ -12,7 +12,6 @@ use yuris_format::vfs::GameFs;
 use yuris_host::audio::OUTPUT_RATE;
 use yuris_host::Host;
 use yuris_format::yscm::YscmTable;
-use yuris_format::ystb::YstbFile;
 use yuris_vm::boot::Bootstrap;
 use yuris_vm::host::{list_script_ids, script_path};
 use yuris_vm::{ResumeResponse, VmEvent, VmSuspend};
@@ -127,12 +126,13 @@ fn run_inner(args: BootArgs) -> Result<()> {
         booted.applied_ysvr
     );
     // Parse every script with the key; a wrong key or version fails most of them.
+    let returncode = yuris_vm::host::game_returncode(&fs);
     let bad = ids
         .iter()
         .filter(|&&id| {
             fs.read(&script_path(id))
                 .ok()
-                .and_then(|b| YstbFile::from_bytes(&b, booted.key).ok())
+                .and_then(|b| yuris_vm::host::parse_script(&b, booted.key, returncode).ok())
                 .and_then(|f| f.groups().ok())
                 .is_none()
         })

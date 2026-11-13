@@ -589,6 +589,40 @@ impl CommandMap {
             }
             g.command_type = self.canon(g.command_type);
         }
+        legacy_jump_targets(groups, first_slots, script);
+    }
+}
+
+/// Pre-300 scripts store IF/ELSE/LOOP targets as byte offsets into the
+/// command section; the VM expects command indices. Runs after the command
+/// indices are canonical. A target that is not a command start becomes 0
+/// (the VM's "no target").
+fn legacy_jump_targets(
+    groups: &[yuris_format::ystb::CommandGroup],
+    first_slots: &[usize],
+    script: &mut yuris_format::ystb::YstbFile,
+) {
+    if !script.is_legacy() {
+        return;
+    }
+    let mut fixes = Vec::new();
+    for (g, &first) in groups.iter().zip(first_slots) {
+        let targets: &[usize] = match g.command_type {
+            crate::cmd::IF | crate::cmd::ELSE => &[1, 2],
+            crate::cmd::LOOP => &[1],
+            _ => continue,
+        };
+        for &t in targets {
+            if t < g.window_count as usize {
+                let len = script.slots()[first + t].len;
+                let pc = if len == 0 { 0 } else { script.pc_for_offset(len).unwrap_or(0) };
+                fixes.push((first + t, pc as u32));
+            }
+        }
+    }
+    let slots = script.slots_mut();
+    for (i, pc) in fixes {
+        slots[i].len = pc;
     }
 }
 

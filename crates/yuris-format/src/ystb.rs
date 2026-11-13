@@ -111,7 +111,20 @@ pub struct YstbFile {
     slots: Vec<CommandSlot>,
     content: Vec<u8>,
     part4: Vec<u8>,
+    /// Pre-300 scripts only: byte offset of each command in the original
+    /// command section, then the section length (labels and jump targets
+    /// use these offsets).
+    legacy_offsets: Option<Vec<u32>>,
 }
+
+/// First engine version with the split YSTB layout (groups, windows,
+/// expressions, line numbers). Older scripts use one command stream.
+pub const SPLIT_LAYOUT_VERSION: u32 = 300;
+
+/// Default script key of engine 290.
+pub const KEY_290: [u8; 4] = [0xd3, 0x6f, 0xac, 0x96];
+/// Default script key of engines before 290.
+pub const KEY_200: [u8; 4] = [0x07, 0xb4, 0x02, 0x4a];
 
 impl YstbFile {
     /// 从**已解压**的 YSTB 字节解析，`key` 为 4 字节循环 XOR 密钥。
@@ -125,6 +138,9 @@ impl YstbFile {
             });
         }
         let version = r.u32_le()?;
+        if version < SPLIT_LAYOUT_VERSION {
+            return Self::from_legacy_bytes(data, key, None);
+        }
         let unknown1 = r.u32_le()?;
         let part1_len = r.u32_le()?;
         let command_len = r.u32_le()?;
@@ -191,7 +207,114 @@ impl YstbFile {
             slots,
             content,
             part4,
+            legacy_offsets: None,
         })
+    }
+
+    /// Parses a pre-300 script (single command stream) into the split model.
+    ///
+    /// Layout: header `YSTB, version, cmds_len, exprs_len, exprs_offset
+    /// (= 0x20 + cmds_len), 12 zero bytes`, then the command section and the
+    /// expression section, each XOR-ed with `key` from its own start. A
+    /// command is `id u8, arg_count u8, line u32` followed by 12-byte
+    /// arguments with the same layout as split-model windows (`id u16, type
+    /// u8, op u8, len u32, offset u32`). RETURNCODE's single argument has no
+    /// offset in engine 290 (8 bytes) and no length before it (4 bytes);
+    /// pass its command id as `returncode` (from the game's YSCM).
+    ///
+    /// Groups get `param` 0 (there are no array-dimension bitmaps), the
+    /// expression section becomes the content pool and line numbers go to
+    /// part4, as in the split layout. Labels and IF/ELSE/LOOP targets still
+    /// hold byte offsets; [`Self::pc_for_offset`] converts them.
+    pub fn from_legacy_bytes(data: &[u8], key: [u8; 4], returncode: Option<u8>) -> Result<Self> {
+        let mut r = Reader::new(data);
+        let magic = r.u32_bytes()?;
+        if magic != YSTB_MAGIC {
+            return Err(Error::BadMagic { expected: YSTB_MAGIC, actual: magic });
+        }
+        let version = r.u32_le()?;
+        let cmds_len = r.u32_le()? as usize;
+        let exprs_len = r.u32_le()? as usize;
+        let exprs_off = r.u32_le()? as usize;
+        let mut pad = [0u32; 3];
+        for p in &mut pad {
+            *p = r.u32_le()?;
+        }
+        if exprs_off != HEADER_LEN + cmds_len
+            || pad != [0; 3]
+            || HEADER_LEN + cmds_len + exprs_len != data.len()
+        {
+            return Err(Error::format(format!(
+                "legacy YSTB v{version}: sections ({cmds_len}, {exprs_len} @ {exprs_off}) do not close at {}",
+                data.len()
+            )));
+        }
+        let xor = |b: &[u8]| -> Vec<u8> { b.iter().enumerate().map(|(i, v)| v ^ key[i % 4]).collect() };
+        let cmds = xor(&data[HEADER_LEN..exprs_off]);
+        let content = xor(&data[exprs_off..]);
+
+        let mut part1 = Vec::new();
+        let mut slots = Vec::new();
+        let mut lines = Vec::new();
+        let mut offsets = Vec::new();
+        let mut p = 0usize;
+        let short = |p: usize, need: usize| Error::Truncated { need, offset: HEADER_LEN + p, have: data.len() };
+        while p < cmds.len() {
+            let head = cmds.get(p..p + 6).ok_or_else(|| short(p, 6))?;
+            let (id, argc) = (head[0], head[1]);
+            offsets.push(p as u32);
+            lines.extend_from_slice(&head[2..6]);
+            part1.extend_from_slice(&[id, argc, 0, 0]);
+            p += 6;
+            let compact = returncode == Some(id);
+            if compact && argc != 1 {
+                return Err(Error::format(format!("legacy RETURNCODE at {p:#x} has {argc} arguments")));
+            }
+            for _ in 0..argc {
+                let width = if !compact { 12 } else if version == 290 { 8 } else { 4 };
+                let a = cmds.get(p..p + width).ok_or_else(|| short(p, width))?;
+                let word = |o: usize| u32::from_le_bytes(a[o..o + 4].try_into().unwrap());
+                let slot = CommandSlot {
+                    tag: word(0),
+                    len: if width >= 8 { word(4) } else { 0 },
+                    offset: if width == 12 { word(8) } else { 0 },
+                };
+                slots.push(slot);
+                p += width;
+            }
+        }
+        let n = offsets.len() as u32;
+        offsets.push(p as u32);
+        Ok(Self {
+            header: YstbHeader {
+                version,
+                unknown1: n,
+                part1_len: n * GROUP_SIZE as u32,
+                command_len: (slots.len() * SLOT_SIZE) as u32,
+                content_len: content.len() as u32,
+                part4_len: lines.len() as u32,
+                unknown2: 0,
+            },
+            part1,
+            slots,
+            content,
+            part4: lines,
+            legacy_offsets: Some(offsets),
+        })
+    }
+
+    /// Whether this script came from the pre-300 layout.
+    pub fn is_legacy(&self) -> bool {
+        self.legacy_offsets.is_some()
+    }
+
+    /// Pre-300 scripts: the command index at byte offset `offset` of the
+    /// original command section. An offset at the end of the section maps to
+    /// the command count. `None` for split-layout scripts or an offset that
+    /// is not a command start.
+    pub fn pc_for_offset(&self, offset: u32) -> Option<usize> {
+        let offs = self.legacy_offsets.as_ref()?;
+        offs.binary_search(&offset).ok()
     }
 
     /// 文件头。
@@ -441,6 +564,34 @@ pub fn segment_window(window: &[u8]) -> Result<Vec<RawInstr>> {
 /// 见模块文档。返回 `(key, score)`，score 为 [`YstbFile::key_score`]；
 /// 两个候选都低于阈值则报错，**不要猜**。
 pub fn guess_key(data: &[u8]) -> Result<([u8; 4], f32)> {
+    guess_key_with(data, None)
+}
+
+/// [`guess_key`] for a game whose RETURNCODE index is known, which pre-300
+/// scripts need to be read (see [`YstbFile::from_legacy_bytes`]).
+///
+/// Pre-300 candidates are the engines' default keys; a candidate scores by
+/// the share of arguments whose expression lies inside the expression
+/// section.
+pub fn guess_key_with(data: &[u8], returncode: Option<u8>) -> Result<([u8; 4], f32)> {
+    if data.len() >= 8 && u32::from_le_bytes(data[4..8].try_into().unwrap()) < SPLIT_LAYOUT_VERSION {
+        let mut best: Option<([u8; 4], f32)> = None;
+        for cand in [KEY_290, KEY_200] {
+            let Ok(f) = YstbFile::from_legacy_bytes(data, cand, returncode) else { continue };
+            let n = f.slots.len().max(1) as f32;
+            let inside = f.slots.iter()
+                .filter(|s| s.len > 0 && (s.offset as usize + s.len as usize) <= f.content.len())
+                .count() as f32;
+            let score = inside / n;
+            if best.map_or(true, |(_, s)| score > s) {
+                best = Some((cand, score));
+            }
+        }
+        return match best {
+            Some((k, s)) if s >= 0.5 || data.len() <= HEADER_LEN => Ok((k, s)),
+            _ => Err(Error::Unimplemented("pre-300 YSTB key is not a default engine key")),
+        };
+    }
     let mut r = Reader::new(data);
     let magic = r.u32_bytes()?;
     if magic != YSTB_MAGIC {

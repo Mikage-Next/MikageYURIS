@@ -1,6 +1,6 @@
 //! YSLB labels (`ysbin\ysl.ybn`).
 //!
-//! The targets of GO, GOSUB and LABELINFO, found by the murmur2 hash of the
+//! The targets of GO, GOSUB and LABELINFO, found by the hash (by version) of the
 //! name. See `docs/formats/ysbin.md`.
 //!
 //! ```text
@@ -9,7 +9,7 @@
 //! [labels]      count × {
 //!     u8  name_len
 //!     u8[name_len]  name, e.g. "es.BT.W.GET"
-//!     u32 hash      murmur2(name)
+//!     u32 hash      murmur2(name) from 477, CRC32 from 265, Adler-32 before
 //!     u32 target_pc group index
 //!     u16 script_id script number (yst%05d)
 //!     u8  flag_a
@@ -19,7 +19,7 @@
 
 use std::collections::HashMap;
 
-use yuris_core::{murmur2, Error, Reader, Result};
+use yuris_core::{Error, Reader, Result};
 
 /// YSLB magic：`YSLB`。
 pub const YSLB_MAGIC: [u8; 4] = *b"YSLB";
@@ -78,6 +78,13 @@ impl YslbTable {
         }
         let version = r.u32_le()?;
         let count = r.u32_le()? as usize;
+        // Label names hash like YPF entry names: murmur2 from 477, CRC32
+        // from 265, Adler-32 before.
+        let name_hash = match version {
+            477.. => crate::ypf::NameHash::Murmur2,
+            265.. => crate::ypf::NameHash::Crc32,
+            _ => crate::ypf::NameHash::Adler32,
+        };
 
         let mut buckets = Vec::with_capacity(BUCKET_COUNT);
         for _ in 0..BUCKET_COUNT {
@@ -95,7 +102,7 @@ impl YslbTable {
             let flag_a = r.u8()?;
             let flag_b = r.u8()?;
 
-            let actual = murmur2(&name);
+            let actual = name_hash.hash(&name);
             if actual != hash {
                 return Err(Error::format(format!(
                     "YSLB label #{i} hash mismatch: stored {hash:#010x}, computed {actual:#010x}"
