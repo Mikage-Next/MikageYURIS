@@ -2643,6 +2643,7 @@ impl GroupVm {
                     let mut id_flag: i64 = 0;
                     let mut layer_id: Option<Vec<u8>> = None;
                     let mut target: Option<yuris_script::LValueRef> = None;
+                    let mut layer_no: Option<i64> = None;
                     let mut evaluated: Vec<(u8, String)> = Vec::new();
                     for w in &windows {
                         if w.len == 0 {
@@ -2677,12 +2678,17 @@ impl GroupVm {
                                     Value::Str(b) => layer_id = Some(b.clone()),
                                     _ => id_flag = v.as_int_opt().unwrap_or(0),
                                 },
+                                5 => layer_no = v.as_int_opt(),
                                 _ => {}
                             }
                             if self.trace {
                                 evaluated.push((slot, value_summary(&v)));
                             }
                         }
+                    }
+                    // IDNO joins the layer ID, as for the CG commands.
+                    if let (Some(id), Some(n)) = (&mut layer_id, layer_no) {
+                        id.extend_from_slice(n.to_string().as_bytes());
                     }
                     if let (None, Some(slot), Some(dno_v), Some(lval)) = (&file, mem, dno, &target) {
                         if !lval.indices.is_empty() {
@@ -2746,6 +2752,7 @@ impl GroupVm {
                     let mut set_ref: Option<Vec<u8>> = None;
                     let mut layer_id: Option<Vec<u8>> = None;
                     let mut mem: Option<i64> = None;
+                    let mut layer_no: Option<i64> = None;
                     let mut set_flag = false;
                     let mut evaluated: Vec<(u8, String)> = Vec::new();
                     for w in &windows {
@@ -2796,6 +2803,7 @@ impl GroupVm {
                                     (0, Value::Str(b)) => file = Some(b.clone()),
                                     (1, Value::Int(n)) => mem = Some(*n),
                                     (4, Value::Str(b)) => layer_id = Some(b.clone()),
+                                    (5, Value::Int(n)) => layer_no = Some(*n),
                                     (3, Value::Int(n)) => set_flag = *n != 0,
                                     _ => {}
                                 }
@@ -2814,6 +2822,9 @@ impl GroupVm {
                     // the value wiped Erewhon's config array (@1146).
                     // Blocks are merged into an existing file.
                     let _ = set_flag;
+                    if let (Some(id), Some(n)) = (&mut layer_id, layer_no) {
+                        id.extend_from_slice(n.to_string().as_bytes());
+                    }
                     let mut set_target = None;
                     if let Some(bytes) = set_ref {
                         let target = extract_var_target(&bytes)?;

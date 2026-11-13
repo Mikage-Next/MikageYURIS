@@ -691,6 +691,10 @@ impl Native for Host {
         }
         l.image = Arc::new(RgbaImage { width, height, data: pixels.to_vec() });
         l.file.clear();
+        // A loaded picture shows opaque. Kaihatsu Zanmai creates its save
+        // thumbnail layers with A=0 and never raises it; the thumbnails
+        // only appear if the load does.
+        l.alpha = 256;
         true
     }
 
