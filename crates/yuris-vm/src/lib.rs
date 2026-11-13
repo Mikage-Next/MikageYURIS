@@ -549,6 +549,8 @@ pub struct GroupVm {
     /// Declaration). On by default for tests and traces; a player turns it
     /// off, as they are most of the cost of a run.
     trace: bool,
+    /// What `PRODUCT COM=1` returns (the product build; per game).
+    product_version: Option<i64>,
     /// Engine clock in ms (`@1[1]`); the host advances it.
     clock_ms: u64,
     /// Whether the host has initialized the engine-start date row.
@@ -632,6 +634,7 @@ impl GroupVm {
             ctx: std::sync::Arc::new(ctx),
             ctx_cache: HashMap::new(),
             trace: true,
+            product_version: None,
             clock_ms: 0,
             date_time_initialized: false,
             decoded: Default::default(),
@@ -810,6 +813,11 @@ impl GroupVm {
     /// [`yuris_format::yslb::YslbTable`](yuris_format::yslb::YslbTable)。
     pub fn set_labels(&mut self, labels: HashMap<Vec<u8>, (u32, u16)>) {
         self.labels = labels;
+    }
+
+    /// What `PRODUCT COM=1` returns for this game (see the boot registry).
+    pub fn set_product_version(&mut self, version: Option<i64>) {
+        self.product_version = version;
     }
 
     /// 设置当前脚本号(跨脚本跳转判定;`yst%05d.ybn` 的 %05d)。
@@ -1568,9 +1576,23 @@ impl GroupVm {
                     continue;
                 }
                 cmd::PRODUCT => {
-                    // Erewhon's es.ONH.* pass COM=1001 and two numbers to the
-                    // product's own engine extension and never read a
-                    // result: nothing to do here.
+                    // The product's own engine extension. Erewhon's es.ONH.*
+                    // pass COM=1001 and two numbers and never read a result.
+                    // COM=1 writes the product build to LET (slot 1); the
+                    // value comes from the boot registry.
+                    if let Some(version) = self.product_version {
+                        let com = match windows.iter().find(|w| w.tag & 0xff == 0) {
+                            Some(w) => self.eval_window_condition(Some(w))?.and_then(|v| v.as_int_opt()),
+                            None => None,
+                        };
+                        let let_window = windows.iter().find(|w| w.tag & 0xff == 1 && w.len > 0);
+                        if let (Some(1), Some(w)) = (com, let_window) {
+                            let bytes = self.ctx.script.window_bytes_pooled_copy(w)
+                                .ok_or_else(|| Error::format("PRODUCT LET window past the pool"))?;
+                            let target = extract_var_target(&bytes)?;
+                            self.write_var_target(&target, Value::Int(version))?;
+                        }
+                    }
                     self.pc += 1;
                     continue;
                 }
@@ -3726,9 +3748,9 @@ impl GroupVm {
         // 帧局部数组在 locals 内以 {At,53}/{At,54}/{Dollar,55} 键承载 ——
         // 与 LET 帧局部写路径(fr.locals.set_elem)及 aload 帧局部读路径
         // (eval.rs locals 优先)共用同一寻址。
-        let int_count = ((gparam & 0xff) >> 3) as u32;
-        let flt_count = ((gparam & 7) as u32) * 4 + ((gparam >> 14) as u32);
-        let str_count = ((gparam >> 9) & 0x1f) as u32;
+        let mut int_count = ((gparam & 0xff) >> 3) as u32;
+        let mut flt_count = ((gparam & 7) as u32) * 4 + ((gparam >> 14) as u32);
+        let mut str_count = ((gparam >> 9) & 0x1f) as u32;
         let dbg = debug_frame();
         // 先收集实参窗:(type, slot) → 窗口
         let mut args: [std::collections::HashMap<u32, &yuris_format::ystb::CommandSlot>; 3] =
@@ -3745,6 +3767,16 @@ impl GroupVm {
                 _ => continue, // 条件/标签窗(B0=0)或区段外
             };
             args[ty].insert(slot, w);
+        }
+        // Some 494 builds (双子の恋は見抜けない, 2026) store the argument
+        // count in gparam instead of the bitmap above. When the bitmap does
+        // not cover the arguments given, take each type's highest slot.
+        let highest = |m: &std::collections::HashMap<u32, &yuris_format::ystb::CommandSlot>| {
+            m.keys().copied().max().unwrap_or(0)
+        };
+        let given = [highest(&args[0]), highest(&args[1]), highest(&args[2])];
+        if given[0] > int_count || given[1] > flt_count || given[2] > str_count {
+            [int_count, flt_count, str_count] = given;
         }
         let Some(ids) = self.system_vars.ids() else {
             tracing::warn!(target: "yuris_version", "argument mapping unavailable script={} pc={}", self.ctx.script_id, self.pc);

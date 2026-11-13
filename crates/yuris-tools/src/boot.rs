@@ -161,6 +161,7 @@ fn run_inner(args: BootArgs) -> Result<()> {
     if let Some(c) = &cfg {
         host.caption = host.encoding.encode(&c.caption).0.into_owned();
     }
+    yuris_player::apply_translation_patch(&mut host, &fs);
     for f in &args.fonts {
         let bytes = std::fs::read(f).with_context(|| format!("read {}", f.display()))?;
         let name = f.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default();

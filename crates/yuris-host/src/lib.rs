@@ -10,6 +10,7 @@
 //! WINDOW) and from what Erewhon's scripts expect; where both are silent the
 //! choice is noted at the handler.
 
+pub mod sjis_tunnel;
 pub mod audio;
 pub mod compose;
 pub mod layers;
@@ -48,6 +49,9 @@ pub struct Host {
     pub caption: Vec<u8>,
     /// Text encoding of the game's strings.
     pub encoding: &'static encoding_rs::Encoding,
+    /// Characters a translation patch tunnels through Shift-JIS codes
+    /// that CP932 leaves unused (see [`sjis_tunnel`]).
+    pub sjis_tunnel: Vec<char>,
     /// Distinct problems met (unknown parameters, missing files), in order.
     pub notes: Vec<String>,
     fs: Option<Arc<GameFs>>,
@@ -76,6 +80,7 @@ impl Host {
             screen,
             caption: Vec::new(),
             encoding: encoding_rs::SHIFT_JIS,
+            sjis_tunnel: Vec::new(),
             notes: Vec::new(),
             fs,
             images: HashMap::new(),
@@ -99,7 +104,10 @@ impl Host {
     }
 
     fn decode(&self, b: &[u8]) -> String {
-        self.encoding.decode(b).0.into_owned()
+        if self.sjis_tunnel.is_empty() {
+            return self.encoding.decode(b).0.into_owned();
+        }
+        sjis_tunnel::decode(b, &self.sjis_tunnel, self.encoding)
     }
 
     /// Loads an image by game path (cached). None when missing/undecodable.

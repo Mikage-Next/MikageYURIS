@@ -55,6 +55,14 @@ pub struct Booted {
 /// it).
 const VERIFIED_494_YSVR: &[(usize, u64)] = &[(47166, 0xd472c3293659379d), (43871, 0xae9b27ee25b9d6fb)];
 
+/// What `PRODUCT COM=1` returns, by YSVR fingerprint. The command runs the
+/// game exe's own extension; COM=1 is the product build its scripts check
+/// before they start (a mismatch ENDs the game).
+const PRODUCT_VERSIONS: &[((usize, u64), i64)] = &[
+    // えろげー！～Hもゲームも開発三昧～ (2010, engine 290): exe 0x43f830.
+    ((45336, 0xb8b3e1303736cc17), 1830),
+];
+
 /// Picks the system-variable IDs from the YSVR evidence, strongest first:
 ///
 /// 1. a verified fingerprint with the unique exact 494 shape (SkyChord);
@@ -168,6 +176,9 @@ impl Bootstrap {
         *stage = "vm_initialization";
         let mut vm = GroupVm::load(ctx.script)?;
         vm.set_system_var_map(map);
+        vm.set_product_version(detection.ysvr_fingerprint.and_then(|f| {
+            PRODUCT_VERSIONS.iter().find(|(k, _)| *k == f).map(|(_, v)| *v)
+        }));
         // A virtual display matching the game canvas is the portable default.
         // These are device capabilities, not iOS surface/letterbox dimensions.
         let display = self.fs.read("ysbin\\yscfg.ybn").ok()

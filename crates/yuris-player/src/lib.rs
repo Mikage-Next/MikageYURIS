@@ -203,10 +203,7 @@ impl Player {
                 return Err(Error::Font(path.display().to_string()));
             }
         }
-        if let Some(map) = fs.read("uif_config.json").ok().and_then(|b| uif::character_substitutions(&b)) {
-            tracing::info!("uif_config.json: {} substituted characters", map.len());
-            host.fonts.set_substitutions(map);
-        }
+        apply_translation_patch(&mut host, &fs);
         let audio = host.audio.clone();
         vm.set_native(Box::new(host));
         vm.set_strict(false);
@@ -578,5 +575,19 @@ pub fn guess_encoding(fs: &GameFs, key: [u8; 4]) -> Encoding {
         Encoding::Gbk
     } else {
         Encoding::ShiftJis
+    }
+}
+
+/// Reads a translation patch's text tables next to the exe: UIF character
+/// substitution (`uif_config.json`) and VNTextPatch's Shift-JIS tunnel
+/// (`sjis_ext.bin`).
+pub fn apply_translation_patch(host: &mut yuris_host::Host, fs: &yuris_format::vfs::GameFs) {
+    if let Some(map) = fs.read("uif_config.json").ok().and_then(|b| uif::character_substitutions(&b)) {
+        tracing::info!("uif_config.json: {} substituted characters", map.len());
+        host.fonts.set_substitutions(map);
+    }
+    if let Some(table) = fs.read("sjis_ext.bin").ok().map(|b| yuris_host::sjis_tunnel::parse_table(&b)) {
+        tracing::info!("sjis_ext.bin: {} tunnelled characters", table.len());
+        host.sjis_tunnel = table;
     }
 }
