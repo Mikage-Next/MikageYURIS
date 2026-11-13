@@ -73,6 +73,26 @@ impl YssdFile {
         if data.len() < table_end {
             return Err(Error::format("YSSD offset table truncated"));
         }
+        // The blocks follow the table one after another; the header counts
+        // them. The table itself is not trusted: the original engine leaves
+        // stale offsets in the slots of DNOs it did not write (seen in
+        // Kaihatsu Zanmai 2010's files), so it is only the fallback.
+        let count = u32::from_le_bytes(data[8..12].try_into().unwrap()) as usize;
+        if let Some(found) = Self::sequential_blocks(data, table_end, count) {
+            let mut blocks = Vec::new();
+            let mut index = vec![None::<u32>; OFFSET_TABLE_LEN];
+            for b in found {
+                let slot = b.dno as usize - 1;
+                match index[slot] {
+                    Some(i) => blocks[i as usize] = b,
+                    None => {
+                        index[slot] = Some(blocks.len() as u32);
+                        blocks.push(b);
+                    }
+                }
+            }
+            return Ok(Self { version, blocks, index });
+        }
         let mut blocks = Vec::new();
         let mut index = vec![None::<u32>; OFFSET_TABLE_LEN];
         for (i, off) in data[0x10..table_end]
@@ -111,6 +131,30 @@ impl YssdFile {
             });
         }
         Ok(Self { version, blocks, index })
+    }
+
+    /// Reads `count` blocks laid out back to back from `at`; None when they
+    /// do not fit the file or a DNO is out of range.
+    fn sequential_blocks(data: &[u8], mut at: usize, count: usize) -> Option<Vec<YssdBlock>> {
+        let mut out = Vec::with_capacity(count.min(OFFSET_TABLE_LEN));
+        for _ in 0..count {
+            let head = data.get(at..at + 0x10)?;
+            let dno = u32::from_le_bytes(head[0..4].try_into().ok()?);
+            if dno == 0 || dno as usize > OFFSET_TABLE_LEN {
+                return None;
+            }
+            let clen = u32::from_le_bytes(head[8..12].try_into().ok()?) as usize;
+            let payload = data.get(at + 0x10..(at + 0x10).checked_add(clen)?)?;
+            out.push(YssdBlock {
+                dno,
+                btype: head[4],
+                strict: head[5],
+                var_id: u16::from_le_bytes(head[6..8].try_into().ok()?),
+                compressed: payload.to_vec(),
+            });
+            at += 0x10 + clen;
+        }
+        Some(out)
     }
 
     /// 按 DNO（1 基）取块。
@@ -436,6 +480,18 @@ impl YssdPayload {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn stale_table_slots_are_ignored() {
+        let mut f = YssdFile::new(192);
+        f.set_block(YssdBlock { dno: 1, btype: 0, strict: 1, var_id: 7, compressed: vec![1, 2, 3] });
+        let mut raw = f.to_bytes();
+        // A leftover offset in the slot of DNO 2, pointing nowhere.
+        raw[0x14..0x18].copy_from_slice(&0x7aa2_f372u32.to_le_bytes());
+        let back = YssdFile::from_bytes(&raw).unwrap();
+        assert_eq!(back.block(1).map(|b| b.compressed.as_slice()), Some(&[1u8, 2, 3][..]));
+        assert!(back.block(2).is_none());
+    }
 
     #[test]
     fn write_then_read() {
