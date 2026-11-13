@@ -58,6 +58,9 @@ pub struct Fonts {
     faces: Vec<(String, FontArc)>,
     /// FONT slots by BNO.
     pub slots: Vec<FontSlot>,
+    /// Characters drawn as other characters (a translation patch's
+    /// substitution table: Shift-JIS kanji standing in for hanzi).
+    substitutions: std::collections::HashMap<char, char>,
 }
 
 impl std::fmt::Debug for Fonts {
@@ -80,6 +83,15 @@ impl Fonts {
             }
             Err(_) => false,
         }
+    }
+
+    /// Draws each key character as its value from now on.
+    pub fn set_substitutions(&mut self, map: std::collections::HashMap<char, char>) {
+        self.substitutions = map;
+    }
+
+    fn substitute(&self, c: char) -> char {
+        self.substitutions.get(&c).copied().unwrap_or(c)
     }
 
     /// Number of registered faces.
@@ -133,7 +145,7 @@ impl Fonts {
         let Some(face) = self.face_for(name) else { return 0 };
         text.chars()
             .map(|c| {
-                let (f, gid) = self.face_with(face, c);
+                let (f, gid) = self.face_with(face, self.substitute(c));
                 f.as_scaled(scale(slot)).h_advance(gid)
             })
             .sum::<f32>()
@@ -152,7 +164,7 @@ impl Fonts {
             if c == '\n' {
                 continue;
             }
-            let (f, gid) = self.face_with(face, c);
+            let (f, gid) = self.face_with(face, self.substitute(c));
             let glyph = gid.with_scale_and_position(scale(slot), ab_glyph::point(pen, y as f32 + ascent));
             pen += f.as_scaled(scale(slot)).h_advance(gid);
             let Some(outline) = f.outline_glyph(glyph) else { continue };

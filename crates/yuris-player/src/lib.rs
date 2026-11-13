@@ -6,6 +6,8 @@
 //! `yuris boot` runs the same VM headless with simulated time; this is the
 //! wall-clock version of its loop.
 
+pub mod uif;
+
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
@@ -200,6 +202,10 @@ impl Player {
             if !host.fonts.add_face(&name, bytes, index) {
                 return Err(Error::Font(path.display().to_string()));
             }
+        }
+        if let Some(map) = fs.read("uif_config.json").ok().and_then(|b| uif::character_substitutions(&b)) {
+            tracing::info!("uif_config.json: {} substituted characters", map.len());
+            host.fonts.set_substitutions(map);
         }
         let audio = host.audio.clone();
         vm.set_native(Box::new(host));

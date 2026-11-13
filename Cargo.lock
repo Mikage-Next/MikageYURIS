@@ -1478,6 +1478,7 @@ name = "yuris-player"
 version = "0.1.0"
 dependencies = [
  "encoding_rs",
+ "serde_json",
  "thiserror",
  "tracing",
  "ttf-parser",
