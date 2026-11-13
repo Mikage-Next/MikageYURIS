@@ -10,7 +10,8 @@
 //!   Variables are shared.
 //! - Tasks yield with WAIT. Within one frame every runnable task runs once,
 //!   until it waits or ends, in order of Z then creation; the main script
-//!   has Z 0. After the last one the VM returns one frame of `Wait` to the
+//!   has Z 0. A task created during a frame first runs in the next one.
+//!   After the last one the VM returns one frame of `Wait` to the
 //!   host.
 //! - `TASK E=0` pauses a task (it is skipped until `E=1`), `TASKEND` ends
 //!   one, and a task ends when it RETURNs from its entry frame.
@@ -518,24 +519,12 @@ impl GroupVm {
             text_line: 0,
             saved: Some(state),
         });
-        // A new task runs later this frame if its place in the order has
-        // not passed yet (it goes in order of Z after the running task).
-        let cur = self.tasks.get(self.current_task).map(|t| (t.z, t.seq));
         let z = p.z.unwrap_or(0);
-        if cur.map(|c| (z, seq) > c).unwrap_or(true) {
-            let insert_at = self.frame_order[self.frame_pos.min(self.frame_order.len())..]
-                .iter()
-                .position(|s| {
-                    self.tasks
-                        .iter()
-                        .find(|t| t.seq == *s)
-                        .map(|t| (t.z, t.seq) > (z, seq))
-                        .unwrap_or(false)
-                })
-                .map(|k| k + self.frame_pos)
-                .unwrap_or(self.frame_order.len());
-            self.frame_order.insert(insert_at, seq);
-        }
+        // A new task first runs in the next frame. Kaihatsu Zanmai 2010's
+        // load relies on this: it creates the scenario scene (whose task
+        // then creates the script task a frame later), waits two frames and
+        // moves the script task to the saved position before it has run its
+        // opening logos.
         Ok((
             format!(
                 "task {} created at yst{sid:05} pc {pc} (Z={z})",
