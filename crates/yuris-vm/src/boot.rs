@@ -55,6 +55,12 @@ pub struct Booted {
 /// it).
 const VERIFIED_494_YSVR: &[(usize, u64)] = &[(47166, 0xd472c3293659379d), (43871, 0xae9b27ee25b9d6fb)];
 
+/// Games that use [`yuris_core::system_vars::ENGINE_290_IDS`], by YSVR fingerprint.
+const ENGINE_290_YSVR: &[(usize, u64)] = &[
+    // えろげー！～Hもゲームも開発三昧～ (2010).
+    (45336, 0xb8b3e1303736cc17),
+];
+
 /// What `PRODUCT COM=1` returns, by YSVR fingerprint. The command runs the
 /// game exe's own extension; COM=1 is the product build its scripts check
 /// before they start (a mismatch ENDs the game).
@@ -65,7 +71,8 @@ const PRODUCT_VERSIONS: &[((usize, u64), i64)] = &[
 
 /// Picks the system-variable IDs from the YSVR evidence, strongest first:
 ///
-/// 1. a verified fingerprint with the unique exact 494 shape (SkyChord);
+/// 1. a verified fingerprint: an engine 290 game, or the unique exact 494
+///    shape (SkyChord);
 /// 2. the one dictionary family whose complete shape matches exactly;
 /// 3. the one family whose shapes match at every ID the runtime uses
 ///    (commercial builds add or change other system variables);
@@ -76,7 +83,8 @@ const PRODUCT_VERSIONS: &[((usize, u64), i64)] = &[
 fn select_system_var_map(detection: &yuris_format::detection::DetectionReport, known_fingerprint: bool)
     -> (yuris_core::SystemVarMap, &'static str) {
     use yuris_core::{SystemVarMap, system_vars::DICTIONARY_IDS};
-    if detection.ysvr_fingerprint.is_none() { return (SystemVarMap::Unknown, "ysvr_missing_or_unreadable"); }
+    let Some(fingerprint) = detection.ysvr_fingerprint else { return (SystemVarMap::Unknown, "ysvr_missing_or_unreadable"); };
+    if ENGINE_290_YSVR.contains(&fingerprint) { return (SystemVarMap::Engine290, "verified_fingerprint"); }
     if detection.ysvr_layouts.iter().filter(|c| c.table.is_some()).count() != 1 {
         return (SystemVarMap::Unknown, "ysvr_layout_unresolved");
     }

@@ -94,6 +94,13 @@ impl VariableReadContext {
     }
 }
 
+/// Engines before 300 write `#` before a numeric variable to read it as
+/// text (`$s = "HP " + #@hp`); later ones push the variable and cast it.
+/// Returns the numeric variable such a read names.
+fn numeric_as_text(r: &VarRef) -> Option<VarRef> {
+    (r.space == VarSpace::Hash).then_some(VarRef { space: VarSpace::At, id: r.id })
+}
+
 fn read_array(store: &VariableStore, r: &VarRef, indices: &[i64], default_on_bounds: bool) -> Result<Value> {
     let zeros;
     let indices = if indices.is_empty() {
@@ -207,7 +214,10 @@ impl<'s> Evaluator<'s> {
                 }
                 Insn::PushVar(r) => {
                     // 引擎 0x48:索引域清零后装载 → 标量,或数组的 0 号元素
-                    let v = self.load_auto(r)?;
+                    let v = match numeric_as_text(r) {
+                        Some(n) => self.load_auto(&n)?.cast_to_str()?,
+                        None => self.load_auto(r)?,
+                    };
                     stack.push(Slot::Val(v));
                 }
                 Insn::PushVarRef(r) | Insn::PushVarIndexed(r) => {
@@ -227,7 +237,10 @@ impl<'s> Evaluator<'s> {
                         Slot::LValue(r) => *r,
                         _ => unreachable!(),
                     };
-                    let v = self.read_context().read(self.store, self.locals, &r, &indices)?;
+                    let v = match numeric_as_text(&r) {
+                        Some(n) => self.read_context().read(self.store, self.locals, &n, &indices)?.cast_to_str()?,
+                        None => self.read_context().read(self.store, self.locals, &r, &indices)?,
+                    };
                     stack.truncate(marker);
                     stack.push(Slot::Val(v));
                 }

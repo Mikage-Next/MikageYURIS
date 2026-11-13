@@ -491,6 +491,7 @@ impl CommandMap {
                     .iter()
                     .enumerate()
                     .map(|(gs, p)| {
+                        let name = id_number_name(gs.checked_sub(1).map(|i| c.params[i].name.as_str()), &p.name);
                         let nth = c.params[..gs]
                             .iter()
                             .filter(|q| q.name.eq_ignore_ascii_case(&p.name))
@@ -498,7 +499,7 @@ impl CommandMap {
                         let cs = canon
                             .iter()
                             .enumerate()
-                            .filter(|(_, n)| n.eq_ignore_ascii_case(&p.name))
+                            .filter(|(_, n)| n.eq_ignore_ascii_case(name))
                             .nth(nth)
                             .map(|(i, _)| i);
                         match cs {
@@ -593,6 +594,21 @@ impl CommandMap {
     }
 }
 
+/// Engine 290 calls the number after a layer ID `NO` (`ID`, `NO`, `ID2`,
+/// `NO2`, `TID`, `TNO`); later tables call it `IDNO`. `prev` is the name of
+/// the parameter before `name`.
+fn id_number_name<'a>(prev: Option<&str>, name: &'a str) -> &'a str {
+    const PAIRS: [(&str, &str, &str); 5] = [
+        ("ID", "NO", "IDNO"), ("ID2", "NO2", "IDNO2"), ("ID3", "NO3", "IDNO3"),
+        ("ID4", "NO4", "IDNO4"), ("TID", "TNO", "TIDNO"),
+    ];
+    let Some(prev) = prev else { return name };
+    PAIRS
+        .iter()
+        .find(|(id, no, _)| prev.eq_ignore_ascii_case(id) && name.eq_ignore_ascii_case(no))
+        .map_or(name, |(_, _, idno)| idno)
+}
+
 /// Pre-300 scripts store IF/ELSE/LOOP targets as byte offsets into the
 /// command section; the VM expects command indices. Runs after the command
 /// indices are canonical. A target that is not a command start becomes 0
@@ -629,6 +645,14 @@ fn legacy_jump_targets(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn engine_290_id_numbers_map_to_idno() {
+        let m = CommandMap::from_yscm(&yscm(&[("CG", &["ID", "NO", "E"])]));
+        assert!(m.slot_changes().is_empty(), "ID, NO, E is ID, IDNO, E");
+        assert_eq!(id_number_name(Some("TID"), "TNO"), "TIDNO");
+        assert_eq!(id_number_name(Some("BNO"), "NO"), "NO");
+    }
 
     #[test]
     fn compact_text_interface_uses_script_output() {

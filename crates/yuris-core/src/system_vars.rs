@@ -121,6 +121,46 @@ pub const SKYCHORD_IDS: SystemVarIds = SystemVarIds {
     key_code: 435,
     pad_code: 543,
 };
+/// The layout of engine 290, read from えろげー！～Hもゲームも開発三昧～
+/// (2010): its YSVR and how its scripts use the IDs. No SDK dictionary of
+/// this age is public. It declares three path strings only (system 50,
+/// project 51, save 52), so the AppData and personal paths share the first
+/// two, and 18 mouse slots instead of 20.
+pub const ENGINE_290_IDS: SystemVarIds = SystemVarIds {
+    time: 0,
+    os_time: 1,
+    loop_counter: 32,
+    arg_int: 34,
+    arg_float: 35,
+    arg_str: 36,
+    ret_int: 38,
+    ret_float: 39,
+    ret_str: 40,
+    system_path: 50,
+    project_path: 51,
+    save_path: 52,
+    appdata_path: 50,
+    personal_path: 51,
+    save_path_type: None,
+    display_depth: 54,
+    display_width: 55,
+    display_height: 56,
+    text: 59,
+    text_flags: 60,
+    characters: 64,
+    mouse_x: 70,
+    mouse_y: 74,
+    inp: 79,
+    mouse_state: 82,
+    key_state: 100,
+    key_any: 208,
+    mouse_count: 214,
+    key_count: 232,
+    key_count_any: 340,
+    mouse_code: 346,
+    key_code: 364,
+    pad_code: 472,
+};
 /// IDs of each public SDK dictionary family (YSCom/*.ycd), looked up there
 /// by variable name; the family names are the ones of yuris_format's shape
 /// profiles. Within every family the input blocks keep the same relative
@@ -146,6 +186,8 @@ pub enum SystemVarMap {
     /// A dictionary family's IDs, chosen from the YSVR shape alone (not
     /// checked by playing a game of it). Holds a [`DICTIONARY_IDS`] name.
     Dictionary(&'static str),
+    /// [`ENGINE_290_IDS`], for games registered by YSVR fingerprint.
+    Engine290,
 }
 impl SystemVarMap {
     /// Returns the selected semantic IDs, or no mapping for unknown games.
@@ -153,6 +195,7 @@ impl SystemVarMap {
         match self {
             Self::Unknown => None,
             Self::SkyChord => Some(SKYCHORD_IDS),
+            Self::Engine290 => Some(ENGINE_290_IDS),
             Self::Dictionary(name) => DICTIONARY_IDS.iter().find(|(n, _)| *n == name).map(|(_, ids)| *ids),
         }
     }

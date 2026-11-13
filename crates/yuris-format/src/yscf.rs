@@ -11,6 +11,8 @@
 //! | `sound_type_slots` | 0x24 | sample `01 02 00 00` |
 //! | `file_priority_*` ×3 | 0x3C/0x40/0x44 | develop, debug, release; the first two are not told apart by the samples |
 //! | `caption_len` / `caption` | 0x4C / 0x4E | |
+//!
+//! Before version 300 the priorities start at 0x30 and the caption at 0x40.
 
 use yuris_core::{Error, Reader, Result};
 
@@ -62,11 +64,14 @@ impl YscfFile {
         image_type_slots.copy_from_slice(r.bytes(8)?);
         let mut sound_type_slots = [0u8; 4];
         sound_type_slots.copy_from_slice(r.bytes(4)?);
-        r.seek(0x3C);
+        // Engine 290 (the oldest seen) has no 12 bytes before the
+        // priorities: they start at 0x30 and the caption at 0x40.
+        let (priorities, caption_at) = if version < 300 { (0x30, 0x40) } else { (0x3C, 0x4C) };
+        r.seek(priorities);
         let file_priority_dev = r.u32_le()?;
         let file_priority_debug = r.u32_le()?;
         let file_priority_release = r.u32_le()?;
-        r.seek(0x4C);
+        r.seek(caption_at);
         let caption_len = r.u16_le()? as usize;
         let caption_bytes = r.bytes(caption_len)?;
         let caption = decode_caption(caption_bytes);
