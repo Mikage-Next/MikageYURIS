@@ -507,15 +507,19 @@ fn main() -> Result<()> {
                 let ypf = open_ypf(&path, None)?;
                 let name = resolve_name(&ypf, &name, &index)?;
                 let blob = get_script(&ypf, &name)?;
-                let key = match key_hex {
-                    Some(h) => parse_key(&h)?,
-                    None => guess_key(&blob)?.0,
-                };
-                let f = YstbFile::from_bytes(&blob, key)?;
                 let yscm = ypf
                     .read("ysbin\\ysc.ybn")
                     .ok()
                     .and_then(|b| yuris_format::yscm::YscmTable::from_bytes(&b).ok());
+                // Pre-300 scripts need the game's RETURNCODE index to be read.
+                let returncode = yscm.as_ref().and_then(|t| {
+                    t.commands().iter().position(|c| c.name.eq_ignore_ascii_case("RETURNCODE")).map(|i| i as u8)
+                });
+                let key = match key_hex {
+                    Some(h) => parse_key(&h)?,
+                    None => yuris_format::ystb::guess_key_with(&blob, returncode)?.0,
+                };
+                let f = yuris_vm::host::parse_script(&blob, key, returncode)?;
                 let groups = f.groups()?;
                 let first = f.group_first_slots(&groups);
                 for (pc, g) in groups.iter().enumerate().skip(from).take(count) {
