@@ -16,7 +16,8 @@
 //!   `\r`, `\p` macros and its own auto settings produce.
 //!
 //! When the task that wrote text goes on to any other command, the engine
-//! adds `Z` and stops that task. The text task shows the characters one by
+//! stops that task, and adds `Z` unless the text ends with a line end
+//! (the text task's line-end routine adds `C`/`R`/`P` and `Z` itself). The text task shows the characters one by
 //! one, waits for its click, and at `Z` runs `TASK RESTART=1`, which lets
 //! the stopped task go on. Both strings start empty again then: the text
 //! task resets its read positions to 1 just before.
@@ -220,7 +221,10 @@ impl GroupVm {
         let mut flags = std::mem::take(&mut self.text.flags);
         // Without tasks nothing could let the script go on.
         let stop = !self.text.auto && self.has_tasks();
-        if stop {
+        // Text that ends a line gets no `Z`: the text task's line-end routine
+        // writes its own `C`/`R`/`P` and `Z` there. Kaihatsu Zanmai HD's text task
+        // appends them at the end of the flags, where a `Z` of ours would stop it first.
+        if stop && flags.last() != Some(&b'E') {
             self.append_str_var(self.system_vars.ids().map(|ids| ids.text_flags), b"Z");
             flags.push(b'Z');
         }
