@@ -4642,6 +4642,7 @@ impl GroupVm {
                 args.push(native::NativeArg { slot, param, value, op });
             }
         }
+        native::fold_id_numbers(&mut args);
         let name = commands::CANONICAL.get(command as usize).copied().unwrap_or("?");
         let call = native::NativeCall {
             command,

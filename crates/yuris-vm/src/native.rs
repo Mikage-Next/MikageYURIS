@@ -87,6 +87,24 @@ pub struct NativeCall<'a> {
     pub clock_ms: i64,
 }
 
+/// Folds `IDNO`-style numbers into their IDs: `CG[ID=BTN.OFF IDNO=3]`
+/// names one layer per number (the button tables of the es.* system). The
+/// number is appended in decimal, so every command that pairs the same ID
+/// and number reaches the same layer.
+pub fn fold_id_numbers(args: &mut [NativeArg]) {
+    const PAIRS: [(&str, &str); 5] = [
+        ("ID", "IDNO"), ("ID2", "IDNO2"), ("ID3", "IDNO3"), ("ID4", "IDNO4"), ("TID", "TIDNO"),
+    ];
+    for (id, no) in PAIRS {
+        let Some(n) = args.iter().rev().find(|a| a.param == no).and_then(|a| a.value.as_int_opt()) else { continue };
+        if let Some(a) = args.iter_mut().rev().find(|a| a.param == id) {
+            if let Value::Str(b) = &mut a.value {
+                b.extend_from_slice(n.to_string().as_bytes());
+            }
+        }
+    }
+}
+
 impl NativeCall<'_> {
     /// The value of parameter `param`, if given.
     pub fn get(&self, param: &str) -> Option<&Value> {
