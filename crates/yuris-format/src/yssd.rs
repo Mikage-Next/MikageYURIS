@@ -437,7 +437,7 @@ impl YssdPayload {
         let dim = u32::from_le_bytes(raw[4..8].try_into().unwrap()) as usize;
         if dim > 8 {
             return Err(Error::format(format!(
-                "YSSD payload dim count {dim} > 8 (引擎 900000 同族)"
+                "YSSD payload dim count {dim} > 8"
             )));
         }
         if raw.len() < 8 + dim * 4 + 4 {

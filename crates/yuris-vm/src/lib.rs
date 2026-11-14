@@ -889,7 +889,7 @@ impl GroupVm {
     pub fn frame_locals_mut(&mut self) -> &mut VariableStore {
         match self.frames.last_mut() {
             Some(f) => &mut f.locals,
-            None => unreachable!("基帧恒在(load 预置;RETURN 保持 len≥1)"),
+            None => unreachable!("the base frame is always present"),
         }
     }
 
@@ -1002,7 +1002,7 @@ impl GroupVm {
             3 | 0 => 0x24,  // STR -> $
             other => {
                 return Err(Error::Unimplemented(
-                    "YSVR 条目类型 Unknown(不猜)",
+                    "unknown YSVR entry type",
                 ));
             }
         };
@@ -1092,7 +1092,7 @@ impl GroupVm {
             VmState::Finished => return Ok(VmSuspend::Complete),
             VmState::Error => {
                 return Err(Error::format(
-                    "VM 处于 Error 态;需先检查事件,骨架版不支持自动恢复",
+                    "the VM is in the error state",
                 ))
             }
             VmState::Idle | VmState::Running => {}
@@ -1206,7 +1206,7 @@ impl GroupVm {
                     let cond = self.eval_window_condition(windows.first())?;
                     let Some(cond) = cond else {
                         if let Some(reason) =
-                            self.halt_or_record(self.pc, g.command_type, "GOSUB 无条件窗口")
+                            self.halt_or_record(self.pc, g.command_type, "GOSUB has no condition window")
                         {
                             return Ok(VmSuspend::Error(reason));
                         }
@@ -1329,7 +1329,7 @@ impl GroupVm {
                         }
                     }
                     let Some(frame) = self.frames.pop() else {
-                        unreachable!("frames.len()>1 已保证可弹");
+                        unreachable!("frames.len() > 1 guarantees a frame to pop");
                     };
                     // 引擎 RETURN 语义(成果 51.5):IF 嵌套栈深恢复为帧记录值,
                     // 子程序内遗留的未弹 IF 项 / 循环记录整体丢弃。
@@ -1447,7 +1447,7 @@ impl GroupVm {
                         if let Some(reason) = self.halt_or_record(
                             self.pc,
                             g.command_type,
-                            format!("IF 窗口数 {} != 3(语料恒 3)", g.window_count),
+                            format!("IF has {} windows, expected 3", g.window_count),
                         ) {
                             return Ok(VmSuspend::Error(reason));
                         }
@@ -1457,7 +1457,7 @@ impl GroupVm {
                     let cond = self.eval_window_condition(windows.first())?;
                     let Some(cond) = cond else {
                         if let Some(reason) =
-                            self.halt_or_record(self.pc, g.command_type, "IF 无条件窗口")
+                            self.halt_or_record(self.pc, g.command_type, "IF has no condition window")
                         {
                             return Ok(VmSuspend::Error(reason));
                         }
@@ -1508,7 +1508,7 @@ impl GroupVm {
                 cmd::IFBLEND => {
                     let Some(top) = self.if_nest.last().copied() else {
                         if let Some(reason) =
-                            self.halt_or_record(self.pc, g.command_type, "IFBLEND 无配对 IF")
+                            self.halt_or_record(self.pc, g.command_type, "IFBLEND without IF")
                         {
                             return Ok(VmSuspend::Error(reason));
                         }
@@ -1601,7 +1601,7 @@ impl GroupVm {
                         if let Some(reason) = self.halt_or_record(
                             self.pc,
                             g.command_type,
-                            format!("LET 窗口数 {} != 2(语料恒 2)", g.window_count),
+                            format!("LET has {} windows, expected 2", g.window_count),
                         ) {
                             return Ok(VmSuspend::Error(reason));
                         }
@@ -1617,7 +1617,7 @@ impl GroupVm {
                             if let Some(reason) = self.halt_or_record(
                                 self.pc,
                                 g.command_type,
-                                "LET 左值窗口越过池尾",
+                                "LET target window runs past the pool end",
                             ) {
                                 return Ok(VmSuspend::Error(reason));
                             }
@@ -1642,7 +1642,7 @@ impl GroupVm {
                             if let Some(reason) = self.halt_or_record(
                                 self.pc,
                                 g.command_type,
-                                "LET 右值窗口为空",
+                                "LET value window is empty",
                             ) {
                                 return Ok(VmSuspend::Error(reason));
                             }
@@ -1670,7 +1670,7 @@ impl GroupVm {
                             } else if let Some(reason) = self.halt_or_record(
                                 self.pc,
                                 g.command_type,
-                                "复合赋值目标无当前值(未声明?)",
+                                "compound assignment target has no value (not declared?)",
                             ) {
                                 return Ok(VmSuspend::Error(reason));
                             } else {
@@ -1689,7 +1689,7 @@ impl GroupVm {
                             }
                             Some(fr) => fr.locals.set_elem(&lval.var, &lval.indices, newv.clone()),
                             None => Err(Error::format(
-                                "LET 帧局部但无帧(基帧恒在,不应发生;成果 56)",
+                                "LET to a frame local without a frame",
                             )),
                         }
                     } else if lval.indices.is_empty() {
@@ -1723,7 +1723,7 @@ impl GroupVm {
                         if let Some(reason) = self.halt_or_record(
                             self.pc,
                             g.command_type,
-                            "循环嵌套超过 64 层(引擎 0x18ce0 同族)",
+                            "loops nested deeper than 64",
                         ) {
                             return Ok(VmSuspend::Error(reason));
                         }
@@ -1734,13 +1734,13 @@ impl GroupVm {
                         Some(Value::Int(n)) if n >= 0 => Some(n as u64),
                         Some(Value::Int(_)) => None, // 引擎负值 → 0xffffffff/-1 无限标记(Likely)
                         Some(v) => {
-                            let reason = format!("LOOP 计数非 INT: {v:?}");
+                            let reason = format!("LOOP count is not an integer: {v:?}");
                             self.state = VmState::Error;
                             return Ok(VmSuspend::Error(reason));
                         }
                         None => {
                             if let Some(reason) = self
-                                .halt_or_record(self.pc, g.command_type, "LOOP 无计数窗口")
+                                .halt_or_record(self.pc, g.command_type, "LOOP has no count window")
                             {
                                 return Ok(VmSuspend::Error(reason));
                             }
@@ -1807,7 +1807,7 @@ impl GroupVm {
                         if let Some(reason) = self.halt_or_record(
                             self.pc,
                             g.command_type,
-                            format!("LOOPBREAK 层级 {level} 越界(深度 {})", self.loops.len()),
+                            format!("LOOPBREAK level {level} out of range (depth {})", self.loops.len()),
                         ) {
                             return Ok(VmSuspend::Error(reason));
                         }
@@ -1853,7 +1853,7 @@ impl GroupVm {
                         if let Some(reason) = self.halt_or_record(
                             self.pc,
                             g.command_type,
-                            format!("LOOPCONTINUE 层级 {level} 越界(深度 {})", self.loops.len()),
+                            format!("LOOPCONTINUE level {level} out of range (depth {})", self.loops.len()),
                         ) {
                             return Ok(VmSuspend::Error(reason));
                         }
@@ -1887,7 +1887,7 @@ impl GroupVm {
                     // 否则 PC = body_start(64 位计数,0xffffffff/-1 = 无限标记)
                     let Some(top) = self.loops.last().copied() else {
                         if let Some(reason) = self
-                            .halt_or_record(self.pc, g.command_type, "LOOPEND 无配对 LOOP")
+                            .halt_or_record(self.pc, g.command_type, "LOOPEND without LOOP")
                         {
                             return Ok(VmSuspend::Error(reason));
                         }
@@ -2085,7 +2085,7 @@ impl GroupVm {
                     };
                     let Some(top) = self.if_nest.last().copied() else {
                         if let Some(reason) = self.halt_or_record(
-                            self.pc, g.command_type, "ELSE 无配对 IF") {
+                            self.pc, g.command_type, "ELSE without IF") {
                             return Ok(VmSuspend::Error(reason));
                         }
                         self.pc += 1;
@@ -2175,7 +2175,7 @@ impl GroupVm {
                             .ctx
                             .script
                             .window_bytes_pooled_copy(&w)
-                            .ok_or_else(|| Error::format("VARINFO 引用窗越过池尾"))?;
+                            .ok_or_else(|| Error::format("VARINFO reference window runs past the pool end"))?;
                         let target = extract_var_target(&bytes)?;
                         match slot {
                             0 => set_target = Some(target),
@@ -2262,7 +2262,7 @@ impl GroupVm {
                             .ctx
                             .script
                             .window_bytes_pooled_copy(&w)
-                            .ok_or_else(|| Error::format("VARACT 引用窗越过池尾"))?;
+                            .ok_or_else(|| Error::format("VARACT reference window runs past the pool end"))?;
                         let t = extract_var_target(&bytes)?;
                         if slot == 0 {
                             set_target = Some(t);
@@ -2311,7 +2311,7 @@ impl GroupVm {
                         continue;
                     }
                     let target = set_target.ok_or_else(|| {
-                        Error::format("VARACT 无 SET 引用槽(引擎必填)")
+                        Error::format("VARACT has no SET")
                     })?;
                     // 对象当前值(STR 操作分支的输入;引擎经 FUN_0044d4e8 读取)
                     let obj = self.read_var_target(&target)?;
@@ -2338,7 +2338,7 @@ impl GroupVm {
                                     .and_then(|d| d.first().copied())
                                     .ok_or_else(|| {
                                         Error::format(format!(
-                                            "VARACT DIMSIZE 目标非数组(引擎 desc+2==1) s{} pc={}",
+                                            "VARACT DIMSIZE target is not an array s{} pc={}",
                                             self.ctx.script_id, self.pc
                                         ))
                                     })?;
@@ -2351,7 +2351,7 @@ impl GroupVm {
                                     Value::Int(n) if n >= 0 => n as usize,
                                     other => {
                                         return Err(Error::format(format!(
-                                            "VARACT DIMSIZE 需非负 int,得到 {other:?}"
+                                            "VARACT DIMSIZE needs a non-negative integer, got {other:?}"
                                         )))
                                     }
                                 };
@@ -2375,7 +2375,7 @@ impl GroupVm {
                                     Value::Str(b) => b.clone(),
                                     other => {
                                         return Err(Error::format(format!(
-                                            "VARACT 槽 {slot} 对象非 STR: {other:?}"
+                                            "VARACT slot {slot} target is not a string: {other:?}"
                                         )))
                                     }
                                 };
@@ -2399,7 +2399,7 @@ impl GroupVm {
                                     Value::Str(b) => b.clone(),
                                     other => {
                                         return Err(Error::format(format!(
-                                            "VARACT 槽 {slot} 对象非 STR: {other:?}"
+                                            "VARACT slot {slot} target is not a string: {other:?}"
                                         )))
                                     }
                                 };
@@ -2422,7 +2422,7 @@ impl GroupVm {
                                                 .collect::<Vec<_>>()
                                                 .join(" ");
                                             Error::format(format!(
-                                                "VARACT 槽 {slot} POS={pos_ch} 越界(引擎 0x1d4ca 同族; s{sid} pc={pc} 目标={target:?} 串字节={blen} ops={ops:?} hex={hex})"
+                                                "VARACT slot {slot} POS={pos_ch} out of range (s{sid} pc={pc} target={target:?} bytes={blen} ops={ops:?} hex={hex})"
                                             ))
                                         })?;
                                     let end = varact_char_to_byte(&obj, start_ch + len_ch, self.codepage)
@@ -2431,7 +2431,7 @@ impl GroupVm {
                                             let blen = bytes.len();
                                             let sid = self.ctx.script_id;
                                             Error::format(format!(
-                                                "VARACT 槽 {slot} LENGTH={len_ch} 越界(引擎 0x1d4d4 同族; s{sid} pc={pc} 串字节={blen} POS={pos_ch} ops={ops:?})"
+                                                "VARACT slot {slot} LENGTH={len_ch} out of range (s{sid} pc={pc} bytes={blen} POS={pos_ch} ops={ops:?})"
                                             ))
                                         })?;
                                     result = Some(match slot {
@@ -2461,22 +2461,20 @@ impl GroupVm {
                                     // 带下标 = 非裸数组引用(PUSH/POP 须裸引用)
                                     VarTarget::Indexed(_, _) => {
                                         return Err(Error::format(format!(
-                                            "VARACT PUSH/POP 目标须裸数组引用(引擎 desc+2==1)\
-                                             s{} pc={}",
+                                            "VARACT PUSH/POP target must be a whole array s{} pc={}",
                                             self.ctx.script_id, self.pc
                                         )));
                                     }
                                 };
                                 let Some(bounds) = self.store.array_dims(r) else {
                                     return Err(Error::format(format!(
-                                        "VARACT PUSH/POP 目标非数组 s{} pc={}",
+                                        "VARACT PUSH/POP target is not an array s{} pc={}",
                                         self.ctx.script_id, self.pc
                                     )));
                                 };
                                 if bounds.len() != 1 {
                                     return Err(Error::format(format!(
-                                        "VARACT PUSH/POP 要求 1 维数组(引擎 desc+2==1),\
-                                         得到 {} 维",
+                                        "VARACT PUSH/POP needs a one-dimensional array, got {} dimensions",
                                         bounds.len()
                                     )));
                                 }
@@ -2485,13 +2483,13 @@ impl GroupVm {
                                     Value::Int(n) if *n >= 0 => *n as usize,
                                     other => {
                                         return Err(Error::format(format!(
-                                            "VARACT PUSH/POP 位置须非负 int,得到 {other:?}"
+                                            "VARACT PUSH/POP position must be a non-negative integer, got {other:?}"
                                         )))
                                     }
                                 };
                                 if count == 0 {
                                     return Err(Error::format(
-                                        "VARACT PUSH/POP 空数组(引擎 desc+4==0)",
+                                        "VARACT PUSH/POP on an empty array",
                                     ));
                                 }
                                 let default = match self.store.array_elem_type(r).unwrap() {
@@ -2545,7 +2543,7 @@ impl GroupVm {
                             self.pc,
                             g.command_type,
                             format!(
-                                "VARACT 写操作槽 [{slots:?}] 未实现(不猜) s{} pc={}",
+                                "VARACT slots [{slots:?}] are not implemented s{} pc={}",
                                 self.ctx.script_id, self.pc
                             ),
                         ) {
@@ -2606,7 +2604,7 @@ impl GroupVm {
                             .ctx
                             .script
                             .window_bytes_pooled_copy(&w)
-                            .ok_or_else(|| Error::format("LABELINFO LET 引用窗越过池尾"))?;
+                            .ok_or_else(|| Error::format("LABELINFO LET window runs past the pool end"))?;
                         let_target = Some(extract_var_target(&bytes)?);
                     }
                     if exist {
@@ -2657,7 +2655,7 @@ impl GroupVm {
                                 .ctx
                                 .script
                                 .window_bytes_pooled_copy(w)
-                                .ok_or_else(|| Error::format("LOAD 引用窗越过池尾"))?;
+                                .ok_or_else(|| Error::format("LOAD reference window runs past the pool end"))?;
                             let lval = self.eval_window_lvalue(&bytes)?;
                             if self.trace {
                                 evaluated.push((slot, format!("@{}", lval.var.display())));
@@ -2717,14 +2715,14 @@ impl GroupVm {
                             return Err(self.halt_err(
                                 self.pc,
                                 cmd::LOAD,
-                                "LOAD ID 模式(0x690 配置块)未实现(语料未出现;不猜)",
+                                "LOAD by ID (config block) is not implemented",
                             ));
                         }
                         if !lval.indices.is_empty() {
                             return Err(self.halt_err(
                                 self.pc,
                                 cmd::LOAD,
-                                "LOAD 写回目标带下标(基点偏移语义未逆向;语料未出现)",
+                                "LOAD into an indexed target is not implemented",
                             ));
                         }
                         self.load_yssd(&fname, dno_v, &lval.var)?;
@@ -2770,7 +2768,7 @@ impl GroupVm {
                                     .script
                                     .window_bytes_pooled_copy(w)
                                     .ok_or_else(|| {
-                                        Error::format("SAVE SET 引用窗越过池尾")
+                                        Error::format("SAVE SET window runs past the pool end")
                                     })?;
                                 let is_ref = yuris_script::decode_window(&bytes)
                                     .map(|ins| {
@@ -2941,7 +2939,7 @@ impl GroupVm {
                 cmd::IFEND => {
                     if self.if_nest.pop().is_none() {
                         if let Some(reason) =
-                            self.halt_or_record(self.pc, g.command_type, "IFEND 无配对 IF")
+                            self.halt_or_record(self.pc, g.command_type, "IFEND without IF")
                         {
                             return Ok(VmSuspend::Error(reason));
                         }
@@ -3001,7 +2999,7 @@ impl GroupVm {
                         }
                         let Some(r) = target else {
                             let reason = format!(
-                                "运行期声明 0x{other:02x}:窗口未含变量引用(不猜); \
+                                "declaration 0x{other:02x}: window has no variable reference; \
                                  array_form={array_form}"
                             );
                             let pc = self.pc;
@@ -3174,7 +3172,7 @@ impl GroupVm {
                                         .script
                                         .window_bytes_pooled_copy(w)
                                         .ok_or_else(|| {
-                                            Error::format("FILEINFO LET 引用窗越过池尾")
+                                            Error::format("FILEINFO LET window runs past the pool end")
                                         })?;
                                     let target = extract_var_target(&bytes)?;
                                     let hit = if image_path {
@@ -3192,12 +3190,12 @@ impl GroupVm {
                                 }
                                 (Some(_), (None, _)) => {
                                     {
-                                        evaluated.push((255u8, "err:EXIST 无 FILE 路径".into()));
+                                        evaluated.push((255u8, "err:EXIST without FILE".into()));
                                     }
                                 }
                                 (Some(_), (_, None)) => {
                                     {
-                                        evaluated.push((255u8, "err:无 file_probe".into()));
+                                        evaluated.push((255u8, "err:no file_probe".into()));
                                     }
                                 }
                                 _ => {}
@@ -3322,7 +3320,7 @@ impl GroupVm {
                                     .ctx
                                     .script
                                     .window_bytes_pooled_copy(&w)
-                                    .ok_or_else(|| Error::format("TASKINFO LET 引用窗越过池尾"))?;
+                                    .ok_or_else(|| Error::format("TASKINFO LET window runs past the pool end"))?;
                                 let target = extract_var_target(&bytes)?;
                                 if self.trace {
                                     evaluated.push((
@@ -3382,7 +3380,7 @@ impl GroupVm {
                         continue;
                     }
                     let reason = format!(
-                        "命令 0x{other:02x} 的运行语义未逆向(处理器未实现;不猜) s{} pc={}",
+                        "command 0x{other:02x} is not implemented s{} pc={}",
                         self.ctx.script_id, self.pc
                     );
                     let pc = self.pc;
@@ -3438,7 +3436,7 @@ impl GroupVm {
     fn switch_script(&mut self, script_id: u16, target_pc: usize) -> Result<()> {
         if self.host.is_none() {
             return Err(Error::format(format!(
-                "跨脚本跳转到 script {script_id} 但未绑定 ScriptHost"
+                "jump to script {script_id} without a ScriptHost"
             )));
         }
         self.ctx = self.load_ctx(script_id)?;
@@ -3474,7 +3472,7 @@ impl GroupVm {
     pub fn resume(&mut self, _resp: ResumeResponse) -> Result<()> {
         if self.state == VmState::Error {
             return Err(Error::format(
-                "Error 态需先处理事件;骨架版不支持自动恢复",
+                "the VM is in the error state",
             ));
         }
         Ok(())
@@ -3484,7 +3482,7 @@ impl GroupVm {
     /// 跨脚本 → Unsupported(单脚本 VM 不猜多脚本重绑)。
     fn exec_go(&mut self, windows: &[yuris_format::ystb::CommandSlot]) -> Result<GoOutcome> {
         let Some(w) = windows.first() else {
-            return Ok(GoOutcome::Halted(self.halted(self.pc, cmd::GO, "GO 无窗口")));
+            return Ok(GoOutcome::Halted(self.halted(self.pc, cmd::GO, "GO has no window")));
         };
         // 引擎:len 高位非 0 = 载入期已解析的标签表下标(id|0x10000000)。
         // 该标记只存在于引擎内存(载入后回写);文件形态恒为原始 len。
@@ -3492,11 +3490,11 @@ impl GroupVm {
             return Ok(GoOutcome::Halted(self.halted(
                 self.pc,
                 cmd::GO,
-                "GO len 域带载入期解析标记(0x10000000)——文件形态不应出现;不猜",
+                "GO window length carries the load-time label flag (0x10000000)",
             )));
         }
         let Some(bytes) = self.ctx.script.window_bytes_pooled_copy(w) else {
-            return Ok(GoOutcome::Halted(self.halted(self.pc, cmd::GO, "GO 窗口越过池尾")));
+            return Ok(GoOutcome::Halted(self.halted(self.pc, cmd::GO, "GO window runs past the pool end")));
         };
         // The label is usually a string literal; it can also be computed
         // (Erewhon's es.SCENARIO.FLOW does `GO #=$1068`).
@@ -3514,7 +3512,7 @@ impl GroupVm {
                     return Ok(GoOutcome::Halted(self.halted(
                         self.pc,
                         cmd::GO,
-                        "GO 窗口不是 M-串标签",
+                        "GO window is not a label string",
                     )))
                 }
             },
@@ -3528,7 +3526,7 @@ impl GroupVm {
                         return Ok(GoOutcome::Halted(self.halted(
                             self.pc,
                             cmd::GO,
-                            format!("跨脚本 GO 到 script {script_id} 但未绑定 ScriptHost"),
+                            format!("GO to script {script_id} without a ScriptHost"),
                         )));
                     }
                     return Ok(GoOutcome::CrossScript {
@@ -3541,7 +3539,7 @@ impl GroupVm {
             None => Ok(match self.halt_or_record(
                 self.pc,
                 cmd::GO,
-                format!("GO 标签未命中: {:?}", String::from_utf8_lossy(name)),
+                format!("GO label not found: {:?}", String::from_utf8_lossy(name)),
             ) {
                 Some(reason) => GoOutcome::Halted(reason),
                 None => GoOutcome::NoJump,
@@ -3603,7 +3601,7 @@ impl GroupVm {
                     // A window past the pool end is corrupt. `run` sets the
                     // error state; some callers only record it and carry on.
                     return Err(Error::format(format!(
-                        "窗口 {}+{} 越过 content+part4 池尾",
+                        "window {}+{} runs past the pool end",
                         w.offset, w.len
                     )));
                 };
@@ -3611,7 +3609,7 @@ impl GroupVm {
                     match yuris_script::decode_window(&bytes) {
                         Ok(v) => v.into(),
                         Err(e) => {
-                            return Err(Error::format(format!("条件窗口解码失败: {e}")));
+                            return Err(Error::format(format!("expression decode failed: {e}")));
                         }
                     };
                 self.decoded.insert(key, instrs.clone());
@@ -3633,7 +3631,7 @@ impl GroupVm {
             Ok(stack) => Ok(stack.into_iter().next_back()),
             Err(e) => {
                 Err(Error::format(format!(
-                    "条件窗口求值失败: {e} s{} pc={}",
+                    "expression failed: {e} s{} pc={}",
                     self.ctx.script_id, self.pc
                 )))
             }
@@ -3693,7 +3691,7 @@ impl GroupVm {
         let ids = self.system_vars.ids().ok_or_else(|| Error::format("guest arguments require a system-variable map"))?;
         let key = label.as_bytes().to_vec();
         let Some(&(target, target_script)) = self.labels.get(&key) else {
-            return Err(Error::format(format!("标签不存在: {label}")));
+            return Err(Error::format(format!("label not found: {label}")));
         };
         let mut locals = VariableStore::new();
         let max_i = ints.iter().map(|(s, _)| *s).max().unwrap_or(0);
@@ -3824,7 +3822,7 @@ impl GroupVm {
                         let Some(v) = self.eval_window_condition(Some(w)).ok().flatten() else {
                             if dbg {
                                 eprintln!(
-                                    "[f] seed-skip s{} pc{} {}{}[{}](求值失败/空)",
+                                    "[f] seed-skip s{} pc{} {}{}[{}] (failed or empty)",
                                     self.ctx.script_id,
                                     self.pc,
                                     r.space.prefix(),
@@ -3905,7 +3903,7 @@ impl GroupVm {
         match self.eval_window_condition(Some(w))? {
             Some(Value::Int(n)) if n >= 1 => Ok(Some(n as usize)),
             Some(v) => {
-                let reason = format!("LV 层数非正整数: {v:?}");
+                let reason = format!("LV level is not a positive integer: {v:?}");
                 Err(Error::format(reason))
             }
             None => Ok(Some(1)),
@@ -3920,7 +3918,7 @@ impl GroupVm {
         let instrs = match yuris_script::decode_window(window) {
             Ok(v) => v,
             Err(e) => {
-                return Err(Error::format(format!("LET 左值解码失败: {e}")));
+                return Err(Error::format(format!("LET target decode failed: {e}")));
             }
         };
         let locals = self.frames.last().map(|f| &f.locals);
@@ -4153,7 +4151,7 @@ impl GroupVm {
             return Err(self.halt_err(
                 self.pc,
                 cmd::LOAD,
-                format!("LOAD DNO={dno} 越界(YSSD 偏移表 1 基)"),
+                format!("LOAD DNO={dno} out of range"),
             ));
         }
         let mut name = String::from_utf8_lossy(fname).into_owned();
@@ -4174,7 +4172,7 @@ impl GroupVm {
             return Err(self.halt_err(
                 self.pc,
                 cmd::LOAD,
-                format!("LOAD 文件不存在: {name}(引擎 0x18ed4 错误框同族)"),
+                format!("LOAD file not found: {name}"),
             ));
         };
         let yssd = yuris_format::yssd::YssdFile::from_bytes(&bytes)
@@ -4216,20 +4214,20 @@ impl GroupVm {
             return Err(self.halt_err(
                 self.pc,
                 cmd::LOAD,
-                "LOAD 块类型 1(0x690 配置)须配 ID 模式(引擎 0x1a612;不猜)",
+                "LOAD block type 1 (config) needs the ID mode",
             ));
         }
         if block.btype != 0 {
             return Err(self.halt_err(
                 self.pc,
                 cmd::LOAD,
-                format!("LOAD 块类型 {} 未实现(多子块族;语料未出现)", block.btype),
+                format!("LOAD block type {} is not implemented", block.btype),
             ));
         }
         let raw = yuris_format::yssd::unpack_payload(&block.compressed)
-            .map_err(|e| Error::format(format!("LOAD {name} 块{dno}: {e}")))?;
+            .map_err(|e| Error::format(format!("LOAD {name} block {dno}: {e}")))?;
         let payload = yuris_format::yssd::YssdPayload::from_bytes(&raw)
-            .map_err(|e| Error::format(format!("LOAD {name} 块{dno}: {e}")))?;
+            .map_err(|e| Error::format(format!("LOAD {name} block {dno}: {e}")))?;
 
         // 类型一致(引擎 0x18ee8)+ 严格维数匹配(引擎 0x1a63a/0x1a630)。
         if self.store.has_array(target) {
@@ -4245,7 +4243,7 @@ impl GroupVm {
                     self.pc,
                     cmd::LOAD,
                     format!(
-                        "LOAD 载荷类型 {} 与 {} 声明不符(引擎 0x18ee8)",
+                        "LOAD value type {} does not match the declaration of {}",
                         payload.ty,
                         target.display()
                     ),
@@ -4257,7 +4255,7 @@ impl GroupVm {
                     self.pc,
                     cmd::LOAD,
                     format!(
-                        "LOAD 载荷维数 {:?} 与 {} 声明 {bounds:?} 不符(引擎 0x1a63a)",
+                        "LOAD dimensions {:?} do not match {} declared as {bounds:?}",
                         payload.dims,
                         target.display()
                     ),
@@ -4267,7 +4265,7 @@ impl GroupVm {
                 return Err(self.halt_err(
                     self.pc,
                     cmd::LOAD,
-                    format!("LOAD 非 strict 载荷须标量(引擎 0x1a630)"),
+                    format!("LOAD non-strict value must be a scalar"),
                 ));
             }
         } else if let Some(cur_ty) = self
@@ -4284,7 +4282,7 @@ impl GroupVm {
                     self.pc,
                     cmd::LOAD,
                     format!(
-                        "LOAD 载荷类型 {} 与标量 {} 类型不符(引擎 0x18ee8)",
+                        "LOAD value type {} does not match scalar {}",
                         payload.ty,
                         target.display()
                     ),
@@ -4294,14 +4292,14 @@ impl GroupVm {
                 return Err(self.halt_err(
                     self.pc,
                     cmd::LOAD,
-                    format!("LOAD 标量目标 {} 收到数组载荷(引擎 0x1a630)", target.display()),
+                    format!("LOAD scalar {} got an array value", target.display()),
                 ));
             }
         } else {
             return Err(self.halt_err(
                 self.pc,
                 cmd::LOAD,
-                format!("LOAD 目标 {} 未声明(引擎 0x1a5ea 同族)", target.display()),
+                format!("LOAD target {} is not declared", target.display()),
             ));
         }
 
@@ -4326,7 +4324,7 @@ impl GroupVm {
                         return Err(self.halt_err(
                             self.pc,
                             cmd::LOAD,
-                            format!("LOAD {} 载荷字符串记录截断", target.display()),
+                            format!("LOAD {} string record truncated", target.display()),
                         ));
                     }
                     let len = u32::from_le_bytes(payload.data[p..p + 4].try_into().unwrap())
@@ -4336,7 +4334,7 @@ impl GroupVm {
                         return Err(self.halt_err(
                             self.pc,
                             cmd::LOAD,
-                            format!("LOAD {} 载荷字符串记录截断", target.display()),
+                            format!("LOAD {} string record truncated", target.display()),
                         ));
                     }
                     out.push(Value::Str(payload.data[p..p + len].to_vec()));
@@ -4348,7 +4346,7 @@ impl GroupVm {
         if self.store.has_array(target) {
             self.store
                 .load_array_data(target, values)
-                .map_err(|e| Error::format(format!("LOAD 写回: {e}")))?;
+                .map_err(|e| Error::format(format!("LOAD store: {e}")))?;
         } else {
             // 标量(引擎 memcpy 单元素 8B / STR 首记录)
             match values.into_iter().next() {
@@ -4356,7 +4354,7 @@ impl GroupVm {
                 None => return Err(self.halt_err(
                     self.pc,
                     cmd::LOAD,
-                    format!("LOAD 标量载荷为空({})", target.display()),
+                    format!("LOAD scalar value is empty ({})", target.display()),
                 )),
             }
         }
@@ -4531,7 +4529,7 @@ fn extract_var_target(bytes: &[u8]) -> Result<VarTarget> {
         Some(yuris_script::Insn::PushVar(r))
         | Some(yuris_script::Insn::PushVarRef(r))
         | Some(yuris_script::Insn::PushVarIndexed(r)) => *r,
-        _ => return Err(Error::format("引用窗首条不是变量指令")),
+        _ => return Err(Error::format("reference window does not start with a variable")),
     };
     // 末条 0x29 = 引擎延迟模式不装载的加载标记,剥除;其余为下标表达式
     let idx_len = instrs
@@ -4540,11 +4538,11 @@ fn extract_var_target(bytes: &[u8]) -> Result<VarTarget> {
         .unwrap_or(false);
     if !idx_len {
         return Err(Error::format(
-            "引用窗多指令形态缺末条 0x29(语料外形态;不猜)",
+            "reference window has several instructions but no closing 0x29",
         ));
     }
     if instrs.len() < 3 {
-        return Err(Error::format("引用窗多指令形态过短"));
+        return Err(Error::format("reference window is too short"));
     }
     Ok(VarTarget::Indexed(
         base,
@@ -4591,13 +4589,13 @@ impl GroupVm {
         ev.set_loop_counter(self.loops.last().map(|l| l.counter as i64).unwrap_or(0));
         ev.set_clock_ms(self.clock_ms as i64);
         let stack = ev.eval_instructions(idx).map_err(|e| {
-            Error::format(format!("引用槽下标表达式求值失败: {e}"))
+            Error::format(format!("reference index expression failed: {e}"))
         })?;
         stack
             .into_iter()
             .map(|v| {
                 v.as_int_opt().ok_or_else(|| {
-                    Error::format("引用槽下标表达式结果非整数(不猜)")
+                    Error::format("reference index is not an integer")
                 })
             })
             .collect()
@@ -4813,14 +4811,14 @@ impl GroupVm {
             VarTarget::Scalar(r) => {
                 if !self.store.has_array(r) {
                     return Err(Error::format(format!(
-                        "VARACT DIMSIZE 目标必须是数组(引擎 desc+2==1 检查) s{} pc={}",
+                        "VARACT DIMSIZE target must be an array s{} pc={}",
                         self.ctx.script_id, self.pc
                     )));
                 }
                 let dims = self.store.array_dims(r).unwrap_or_default();
                 if dims.len() != 1 {
                     return Err(Error::format(format!(
-                        "VARACT DIMSIZE 要求 1 维数组(引擎 desc+2==1),得到 {} 维",
+                        "VARACT DIMSIZE needs a one-dimensional array, got {} dimensions",
                         dims.len()
                     )));
                 }
@@ -4841,7 +4839,7 @@ impl GroupVm {
             None => Ok(0),
             Some(Value::Int(n)) if *n >= 0 => Ok(*n as usize),
             Some(other) => Err(Error::format(format!(
-                "VARACT 槽 {slot} 需非负 int,得到 {other:?}"
+                "VARACT slot {slot} needs a non-negative integer, got {other:?}"
             ))),
         }
     }
@@ -4856,7 +4854,7 @@ impl GroupVm {
         evaluated: &mut Vec<(u8, String)>,
     ) -> Result<Option<Value>> {
         let Some(target) = set_target else {
-            return Err(Error::format("VARINFO 无 SET 引用槽(引擎必填)"));
+            return Err(Error::format("VARINFO has no SET"));
         };
         match query {
             None => {
@@ -4872,7 +4870,7 @@ impl GroupVm {
                         Ok(Some(Value::Int(n as i64)))
                     }
                     _ => Err(Error::format(
-                        "VARINFO fallback: SET 变量非 STR(引擎 0x1a6bc)",
+                        "VARINFO fallback: SET variable is not a string",
                     )),
                 }
             }
@@ -4961,7 +4959,7 @@ impl GroupVm {
                         Ok(Some(Value::Int(n as i64)))
                     }
                     _ => Err(Error::format(
-                        "VARINFO LENGTH: SET 变量非 STR(引擎 0x1a6bc)",
+                        "VARINFO LENGTH: SET variable is not a string",
                     )),
                 }
             }
@@ -5021,7 +5019,7 @@ impl GroupVm {
                 Ok(Some(Value::Int(found)))
             }
             Some(slot) => Err(Error::format(format!(
-                "VARINFO 查询槽 {slot}(STRFIRST/SJISCODE)未实现(不猜)"
+                "VARINFO slot {slot} (STRFIRST/SJISCODE) is not implemented"
             ))),
         }
     }
@@ -5286,7 +5284,7 @@ fn value_truthy(v: &Value) -> Result<bool> {
     match v {
         Value::Int(i) => Ok(*i != 0),
         Value::Str(s) => Ok(!s.is_empty()),
-        Value::Float(_) => Err(Error::Unimplemented("float 真值语义")),
+        Value::Float(_) => Err(Error::Unimplemented("float truth value")),
     }
 }
 

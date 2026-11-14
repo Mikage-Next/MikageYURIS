@@ -150,7 +150,7 @@ impl YstbFile {
 
         if command_len % SLOT_SIZE as u32 != 0 {
             return Err(Error::format(format!(
-                "command_len {command_len} is not a multiple of {SLOT_SIZE} (版本变体? 不要猜)"
+                "command_len {command_len} is not a multiple of {SLOT_SIZE} (unknown YSTB variant)"
             )));
         }
 
@@ -371,7 +371,7 @@ impl YstbFile {
         let g = self.header.unknown1 as usize;
         if self.part1.len() != g * GROUP_SIZE {
             return Err(Error::format(format!(
-                "part1_len {} != 4 * unknown1({g}) —— 非 v555 命令组形态",
+                "part1_len {} != 4 * unknown1({g}): not the v555 command group layout",
                 self.part1.len()
             )));
         }

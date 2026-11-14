@@ -112,7 +112,7 @@ impl Value {
             (Value::Int(a), Value::Float(b)) => Ok(Value::Float(*a as f64 + b)),
             (Value::Float(a), Value::Float(b)) => Ok(Value::Float(a + b)),
             _ => Err(Error::Unimplemented(
-                "字符串与数值的混合 + 语义 Unknown(手册要求显式 $()/@() 转换)",
+                "+ of a string and a number is not supported (the manual asks for $() or @())",
             )),
         }
     }
@@ -124,7 +124,7 @@ impl Value {
             (Value::Float(a), Value::Int(b)) => Ok(Value::Float(a - *b as f64)),
             (Value::Int(a), Value::Float(b)) => Ok(Value::Float(*a as f64 - b)),
             (Value::Float(a), Value::Float(b)) => Ok(Value::Float(a - b)),
-            _ => Err(Error::Unimplemented("字符串 - 语义 Unknown")),
+            _ => Err(Error::Unimplemented("string - is not supported")),
         }
     }
 
@@ -135,39 +135,41 @@ impl Value {
             (Value::Float(a), Value::Int(b)) => Ok(Value::Float(a * *b as f64)),
             (Value::Int(a), Value::Float(b)) => Ok(Value::Float(*a as f64 * b)),
             (Value::Float(a), Value::Float(b)) => Ok(Value::Float(a * b)),
-            _ => Err(Error::Unimplemented("字符串 * 语义 Unknown")),
+            _ => Err(Error::Unimplemented("string * is not supported")),
         }
     }
 
-    /// `/`。Int 除零 → 显式报错(引擎行为 Unknown);Float 按 IEEE。
+    /// A numeric zero (strings are never zero).
+    pub fn is_zero(&self) -> bool {
+        match self {
+            Value::Int(n) => *n == 0,
+            Value::Float(f) => *f == 0.0,
+            Value::Str(_) => false,
+        }
+    }
+
+    /// `/`. Division by zero gives 0, for integers and floats alike (the
+    /// engine's expression op 0x2f checks the divisor and stores 0).
     pub fn div(&self, other: &Value) -> Result<Value> {
         match (self, other) {
-            (Value::Int(a), Value::Int(b)) => {
-                if *b == 0 {
-                    Err(Error::format("integer division by zero (引擎语义 Unknown)"))
-                } else {
-                    Ok(Value::Int(a.wrapping_div(*b)))
-                }
-            }
+            (Value::Int(_), Value::Int(0)) => Ok(Value::Int(0)),
+            (Value::Int(a), Value::Int(b)) => Ok(Value::Int(a.wrapping_div(*b))),
+            (Value::Float(_), Value::Int(0)) => Ok(Value::Float(0.0)),
+            (_, Value::Float(b)) if *b == 0.0 => Ok(Value::Float(0.0)),
             (Value::Float(a), Value::Int(b)) => Ok(Value::Float(a / *b as f64)),
             (Value::Int(a), Value::Float(b)) => Ok(Value::Float(*a as f64 / b)),
             (Value::Float(a), Value::Float(b)) => Ok(Value::Float(a / b)),
-            _ => Err(Error::Unimplemented("字符串 / 语义 Unknown")),
+            _ => Err(Error::Unimplemented("string / is not supported")),
         }
     }
 
-    /// `%`。Int 除零 → 显式报错。
+    /// `%`. An integer modulo by zero gives 0, like the engine's op 0x25.
     pub fn modulo(&self, other: &Value) -> Result<Value> {
         match (self, other) {
-            (Value::Int(a), Value::Int(b)) => {
-                if *b == 0 {
-                    Err(Error::format("integer modulo by zero (引擎语义 Unknown)"))
-                } else {
-                    Ok(Value::Int(a.wrapping_rem(*b)))
-                }
-            }
+            (Value::Int(_), Value::Int(0)) => Ok(Value::Int(0)),
+            (Value::Int(a), Value::Int(b)) => Ok(Value::Int(a.wrapping_rem(*b))),
             (Value::Float(a), Value::Float(b)) => Ok(Value::Float(a % b)),
-            _ => Err(Error::Unimplemented("float/int 混合或字符串的 % 语义 Unknown")),
+            _ => Err(Error::Unimplemented("% of mixed float/int or strings is not supported")),
         }
     }
 
@@ -188,7 +190,7 @@ impl Value {
     fn require_numeric(&self, other: &Value) -> Result<()> {
         if matches!(self, Value::Str(_)) || matches!(other, Value::Str(_)) {
             return Err(Error::Unimplemented(
-                "字符串排序比较语义 Unknown(仅 ==/!= 有手册佐证)",
+                "strings compare only with == and !=",
             ));
         }
         Ok(())
@@ -254,7 +256,7 @@ impl Value {
     pub fn bitand(&self, other: &Value) -> Result<Value> {
         match (self, other) {
             (Value::Int(a), Value::Int(b)) => Ok(Value::Int(a & b)),
-            _ => Err(Error::Unimplemented("bitand 仅对 Int 实现(Float/Str Unknown)")),
+            _ => Err(Error::Unimplemented("bitand works on integers only")),
         }
     }
 
@@ -262,7 +264,7 @@ impl Value {
     pub fn bitor(&self, other: &Value) -> Result<Value> {
         match (self, other) {
             (Value::Int(a), Value::Int(b)) => Ok(Value::Int(a | b)),
-            _ => Err(Error::Unimplemented("bitor 仅对 Int 实现")),
+            _ => Err(Error::Unimplemented("bitor works on integers only")),
         }
     }
 
@@ -270,7 +272,7 @@ impl Value {
     pub fn xor(&self, other: &Value) -> Result<Value> {
         match (self, other) {
             (Value::Int(a), Value::Int(b)) => Ok(Value::Int(a ^ b)),
-            _ => Err(Error::Unimplemented("xor 仅对 Int 实现")),
+            _ => Err(Error::Unimplemented("xor works on integers only")),
         }
     }
 
@@ -289,7 +291,7 @@ impl Value {
         match self {
             Value::Int(v) => Ok(*v != 0),
             Value::Float(v) => Ok(*v != 0.0),
-            Value::Str(_) => Err(Error::Unimplemented("字符串真值语义 Unknown")),
+            Value::Str(_) => Err(Error::Unimplemented("a string has no truth value")),
         }
     }
 
@@ -298,7 +300,7 @@ impl Value {
         match self {
             Value::Int(v) => Ok(Value::Int(v.wrapping_neg())),
             Value::Float(v) => Ok(Value::Float(-v)),
-            Value::Str(_) => Err(Error::Unimplemented("字符串取负 语义 Unknown")),
+            Value::Str(_) => Err(Error::Unimplemented("a string cannot be negated")),
         }
     }
 
@@ -309,7 +311,7 @@ impl Value {
             Value::Str(_) => Ok(self.clone()),
             Value::Int(v) => Ok(Value::Str(v.to_string().into_bytes())),
             Value::Float(_) => Err(Error::Unimplemented(
-                "float→string 格式化规则 Unknown(引擎可能是 %f 系)",
+                "float to string formatting is not supported",
             )),
         }
     }
@@ -344,7 +346,7 @@ impl Value {
                 match t.parse::<i64>() {
                     Ok(v) => Ok(Value::Int(v)),
                     Err(_) => Err(Error::Unimplemented(
-                        "非数字字符串转 int 的引擎规则 Unknown(手册:β 版不確定)",
+                        "a non-numeric string cannot be read as an integer",
                     )),
                 }
             }
@@ -417,7 +419,7 @@ impl ArrayStorage {
     /// 读元素。
     pub fn get(&self, indices: &[i64]) -> Result<&Value> {
         let off = Self::linear_offset(&self.bounds, indices)?;
-        self.data.get(off).ok_or_else(|| Error::format("linear offset out of range (内部错误)"))
+        self.data.get(off).ok_or_else(|| Error::format("linear offset out of range (internal error)"))
     }
 
     /// 写元素。
@@ -451,6 +453,9 @@ pub fn compound_assign(code: u8, lhs: &Value, rhs: &Value) -> Result<Value> {
         1 => lhs.add(rhs),
         2 => lhs.sub(rhs),
         3 => lhs.mul(rhs),
+        // `/=` and `%=` by zero leave the target as it is (the engine
+        // skips the division).
+        4 | 5 if rhs.is_zero() => Ok(lhs.clone()),
         4 => lhs.div(rhs),
         5 => lhs.modulo(rhs),
         6 => lhs.bitand(rhs),
@@ -561,7 +566,7 @@ impl VariableStore {
             .get(&(r.space.prefix(), r.id))
             .ok_or_else(|| {
                 Error::format(format!(
-                    "undefined array variable {}{} (引擎 0x1a5ea 同族)",
+                    "undefined array variable {}{}",
                     r.space.prefix(),
                     r.id
                 ))
@@ -743,7 +748,10 @@ mod tests {
         assert!(Value::Str(vec![0x82, 0xA0]).is_truthy().is_err()); // 字符串真值(あ SJIS)
         assert!(Value::Str(b"abc".to_vec()).cast_to_int().is_err()); // 非数字
         assert!(Value::Float(1.0).cast_to_str().is_err()); // float 格式化
-        assert!(Value::Int(1).div(&Value::Int(0)).is_err()); // 除零
+        assert_eq!(Value::Int(1).div(&Value::Int(0)).unwrap(), Value::Int(0));
+        assert_eq!(Value::Float(1.5).div(&Value::Float(0.0)).unwrap(), Value::Float(0.0));
+        assert_eq!(Value::Int(7).modulo(&Value::Int(0)).unwrap(), Value::Int(0));
+        assert_eq!(compound_assign(4, &Value::Int(7), &Value::Int(0)).unwrap(), Value::Int(7));
         assert!(Value::Str(b"a".to_vec()).lt(&Value::Str(b"b".to_vec())).is_err()); // 字符串排序
     }
 

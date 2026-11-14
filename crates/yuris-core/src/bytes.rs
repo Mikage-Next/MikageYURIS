@@ -129,7 +129,7 @@ mod tests {
         xor_cyclic_skip(&mut d, &key, 0x20);
         assert_ne!(&d[..], &orig[..]);
         xor_cyclic_skip(&mut d, &key, 0x20);
-        assert_eq!(d, orig, "XOR 必须是自反的");
+        assert_eq!(d, orig, "XOR must be its own inverse");
     }
 
     #[test]
@@ -137,6 +137,6 @@ mod tests {
         let buf = [1u8, 2, 3, 4];
         let mut r = Reader::new(&buf);
         assert_eq!(r.u32_le().unwrap(), 0x0403_0201);
-        assert!(r.u8().is_err(), "越界必须报 Truncated");
+        assert!(r.u8().is_err(), "out of range must give Truncated");
     }
 }

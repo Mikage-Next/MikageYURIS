@@ -222,7 +222,7 @@ fn load_yssd_strict_dim_mismatch_errors() {
     let idx = yuris_format::vfs::GameFs::open(dir.path()).unwrap();
     vm.set_file_probe(std::sync::Arc::new(idx));
     let err = vm.run(100).unwrap_err();
-    assert!(err.to_string().contains("0x1a63a"), "{err}");
+    assert!(err.to_string().contains("do not match"), "{err}");
 }
 
 /// 类型不匹配(INT 载荷 → STR 目标)→ 引擎 0x18ee8。
@@ -235,7 +235,7 @@ fn load_yssd_type_mismatch_errors() {
     let idx = yuris_format::vfs::GameFs::open(dir.path()).unwrap();
     vm.set_file_probe(std::sync::Arc::new(idx));
     let err = vm.run(100).unwrap_err();
-    assert!(err.to_string().contains("0x18ee8"), "{err}");
+    assert!(err.to_string().contains("does not match"), "{err}");
 }
 
 /// 文件不存在 → 引擎 0x18ed4 错误框语义。
@@ -249,5 +249,5 @@ fn load_yssd_missing_file_errors() {
     let idx = yuris_format::vfs::GameFs::open(dir.path()).unwrap();
     vm.set_file_probe(std::sync::Arc::new(idx));
     let err = vm.run(100).unwrap_err();
-    assert!(err.to_string().contains("0x18ed4"), "{err}");
+    assert!(err.to_string().contains("file not found"), "{err}");
 }

@@ -189,7 +189,7 @@ impl<'s> Evaluator<'s> {
             .map(|s| {
                 s.into_value().ok_or_else(|| {
                     Error::Unimplemented(
-                        "窗口以左值引用结尾(LET 语境需 eval_lvalue_window)",
+                        "the window ends with a variable reference (use eval_lvalue_window)",
                     )
                 })
             })
@@ -230,7 +230,7 @@ impl<'s> Evaluator<'s> {
                         .iter()
                         .rposition(|s| matches!(s, Slot::LValue(_)))
                         .ok_or_else(|| {
-                            Error::format("arrayload 无左值引用(引擎 0x1a5ea 同族)")
+                            Error::format("array load without a variable reference")
                         })?;
                     let indices = gather_indices(&stack[marker + 1..])?;
                     let r = match &stack[marker] {
@@ -315,7 +315,7 @@ impl<'s> Evaluator<'s> {
                 matches!(i.kind, Insn::PushVarRef(_) | Insn::PushVarIndexed(_))
             }) {
                 return Err(Error::Unimplemented(
-                    "LET 左值窗无 0x29 但含多条引用(语料外形态;不猜)",
+                    "LET target window has several references but no 0x29",
                 ));
             }
         }
@@ -323,7 +323,7 @@ impl<'s> Evaluator<'s> {
         let marker = slots
             .iter()
             .position(|s| matches!(s, Slot::LValue(_)))
-            .ok_or_else(|| Error::Unimplemented("LET 左值窗口不含变量引用(不猜)"))?;
+            .ok_or_else(|| Error::Unimplemented("LET target window has no variable reference"))?;
         let r = match &slots[marker] {
             Slot::LValue(r) => *r,
             _ => unreachable!(),
@@ -332,7 +332,7 @@ impl<'s> Evaluator<'s> {
         let indices = gather_indices(&slots[marker + 1..])?;
         if marker != 0 {
             return Err(Error::Unimplemented(
-                "LET 左值引用前有多余栈项(引擎形态外;不猜)",
+                "LET target window has extra values before the reference",
             ));
         }
         Ok(LValueRef { var: r, indices })
@@ -411,10 +411,10 @@ fn gather_indices(slots: &[Slot]) -> Result<Vec<i64>> {
         .map(|s| match s {
             Slot::Val(Value::Int(i)) => Ok(*i),
             Slot::Val(_) => Err(Error::Unimplemented(
-                "非整数下标语义 Unknown(引擎下标域为 i64)",
+                "array index is not an integer",
             )),
             Slot::LValue(_) => Err(Error::format(
-                "下标表中混入左值引用(引擎 0x2710a 同族)",
+                "variable reference among array indices",
             )),
         })
         .collect()
@@ -424,7 +424,7 @@ fn pop_val(stack: &mut Vec<Slot>, ins: &Instruction) -> Result<Value> {
     match stack.pop() {
         Some(Slot::Val(v)) => Ok(v),
         Some(Slot::LValue(_)) => Err(Error::format(format!(
-            "lvalue 不能作运算数 at offset {}",
+            "a variable reference cannot be an operand (offset {})",
             ins.offset
         ))),
         None => Err(Error::format(format!(

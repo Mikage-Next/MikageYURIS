@@ -74,8 +74,9 @@ converted only when shown. From the manual and the scripts:
 - `+` of two strings concatenates; mixing strings and numbers needs `$()` or
   `@()`, as the manual says, and is an error otherwise.
 - Comparisons give 1 or 0. Strings compare only with `==` and `!=`.
-- Integer division or modulo by zero is an error (the engine's behaviour is
-  not known).
+- Division or integer modulo by zero gives 0 (Kaihatsu Zanmai HD's exe:
+  the `/` and `%` ops check the divisor). `/=` and `%=` by zero leave the
+  variable unchanged.
 
 ## System variables
 
