@@ -199,6 +199,16 @@ impl PatchSelection {
             PatchKind::Auto => detect(project),
         }
     }
+
+    /// Like [`Self::profile`]; with the script key known, `Auto` also reads
+    /// the scripts' text when no patch file says what it is (see
+    /// [`detect_with_key`]).
+    pub fn profile_with_key(self, project: &Project, key: [u8; 4]) -> Result<PatchProfile, Failure> {
+        match self.kind {
+            PatchKind::Auto => detect_with_key(project, Some(key)),
+            _ => self.profile(project),
+        }
+    }
 }
 
 impl PatchProfile {
@@ -238,6 +248,69 @@ impl PatchProfile {
 ///
 /// 顺序:`codecs.json` → `sjis_ext.bin` → YURIS_TOOLS 产物签名 → 原版。
 pub fn detect(project: &Project) -> Result<PatchProfile, Failure> {
+    detect_with_key(project, None)
+}
+
+/// [`detect`], and when nothing else decides and the script key is given,
+/// the scripts' own text: Chinese patches that rewrite the scripts in GBK
+/// without any tool signature (Erewhon's CHS `pac/bn.ypf`, packed into its
+/// exe) are told apart from Shift-JIS by which double-byte pairs their text
+/// is made of. See [`gbk_text_votes`].
+pub fn detect_with_key(project: &Project, key: Option<[u8; 4]>) -> Result<PatchProfile, Failure> {
+    let profile = detect_artifacts(project)?;
+    if profile.source != PatchSource::Default {
+        return Ok(profile);
+    }
+    let Some(key) = key else {
+        return Ok(profile);
+    };
+    let (gbk, sjis) = project
+        .script_text_samples(key, 16)
+        .iter()
+        .map(|data| gbk_text_votes(data))
+        .fold((0, 0), |(g, s), (a, b)| (g + a, s + b));
+    if gbk > 0 && gbk * 20 > sjis {
+        return Ok(PatchProfile {
+            kind: PatchKind::Gbk,
+            execution: Codec::Gbk,
+            text_default: Codec::Gbk,
+            name: Codec::Cp932,
+            source: PatchSource::Heuristic,
+            evidence: vec![format!(
+                "heuristic: script text has {gbk} GBK-only and {sjis} Shift-JIS-only pairs"
+            )],
+            ..PatchProfile::default()
+        });
+    }
+    Ok(profile)
+}
+
+/// Counts double-byte pairs in script data that only one of the encodings
+/// explains: a Shift-JIS lead 0x81..0x9F with a trail 0x40..0xFC (not
+/// 0x7F), against a GB2312-area lead 0xB0..0xF7 with a trail 0xA1..0xFE.
+/// Japanese text is mostly the former (kana and common kanji), Chinese GBK
+/// text the latter. Returns `(gbk, sjis)`.
+#[must_use]
+pub fn gbk_text_votes(data: &[u8]) -> (usize, usize) {
+    let (mut gbk, mut sjis) = (0usize, 0usize);
+    let mut i = 0;
+    while i + 1 < data.len() {
+        let (lead, trail) = (data[i], data[i + 1]);
+        if lead < 0x80 {
+            i += 1;
+            continue;
+        }
+        if (0x81..=0x9F).contains(&lead) && (0x40..=0xFC).contains(&trail) && trail != 0x7F {
+            sjis += 1;
+        } else if (0xB0..=0xF7).contains(&lead) && (0xA1..=0xFE).contains(&trail) {
+            gbk += 1;
+        }
+        i += 2;
+    }
+    (gbk, sjis)
+}
+
+fn detect_artifacts(project: &Project) -> Result<PatchProfile, Failure> {
     if let Some(manifest) = read_manifest(project)? {
         return Ok(manifest);
     }

@@ -216,6 +216,43 @@ impl Project {
     }
 
     /// 取验证样本(按解压大小取前 4,跳过超大文件)、命令条数与命令表。
+    /// The decrypted argument data (where the scripts' text lives) of the
+    /// largest V5 scripts, for guessing the text encoding. V2 scripts and
+    /// scripts that fail to decrypt are left out.
+    pub fn script_text_samples(&self, key: [u8; 4], max: usize) -> Vec<Vec<u8>> {
+        let Ok(source) = self.open_source() else {
+            return Vec::new();
+        };
+        let Ok(dir) = LookupKey::new(b"ysbin", CODEC) else {
+            return Vec::new();
+        };
+        let mut scripts: Vec<(u64, Vec<u8>)> = source
+            .list(&dir)
+            .unwrap_or_default()
+            .into_iter()
+            .filter(|e| is_script_name(&e.name))
+            .filter_map(|e| e.size.map(|size| (size, e.name)))
+            .filter(|(size, _)| *size <= MAX_SAMPLE_BYTES)
+            .collect();
+        scripts.sort_by(|a, b| b.0.cmp(&a.0));
+        scripts.truncate(max);
+        let mut out = Vec::new();
+        for (_, name) in scripts {
+            let mut raw = b"ysbin/".to_vec();
+            raw.extend_from_slice(&name);
+            let Ok(lookup) = LookupKey::new(&raw, CODEC) else {
+                continue;
+            };
+            let Ok(data) = source.open(&lookup) else {
+                continue;
+            };
+            if let Ok(segments) = yu_format::ystb::Segments::decrypt(&data, &key, &raw) {
+                out.push(segments.args_data);
+            }
+        }
+        out
+    }
+
     fn load_key_samples(
         &self,
     ) -> Result<(Vec<Sample>, Option<usize>, Option<yu_format::yscm::CommandTable>), Failure> {

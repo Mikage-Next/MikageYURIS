@@ -2988,9 +2988,10 @@ fn boot(project: &Project, opts: &EngineOptions) -> CliResult<BootBundle> {
         script_key.hex(),
         script_key.source.describe()
     );
-    // 翻译补丁识别只在这里发生一次:VM 执行层 codec 与显示层配置分开落地,
-    // 启动路径不再按文本统计猜编码。
-    let patch_profile = opts.patch.profile(project)?;
+    // 翻译补丁识别只在这里发生一次:VM 执行层 codec 与显示层配置分开落地。
+    // `auto` without any patch file falls back to the scripts' text
+    // (`patch::detect_with_key`), which needs the key resolved above.
+    let patch_profile = opts.patch.profile_with_key(project, script_key.bytes)?;
     log::info!(
         target: "yu-cli::engine",
         "patch: {} evidence={:?}",
