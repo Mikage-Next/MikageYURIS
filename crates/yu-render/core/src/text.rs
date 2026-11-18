@@ -189,6 +189,7 @@ pub struct TextComposer {
     catalog_faces: Option<Vec<yu_font::FaceId>>,
     /// SJIS 隧道表(`sjis_ext.bin`;补丁路线 C)。`None` = 无隧道。
     tunnel: Option<TunnelTable>,
+    substitution: Option<yu_format::text::CharSubstitution>,
     /// 合成缓存当前字节占用(`ComposeCacheEntry::bytes` 之和)。
     cache_bytes: u64,
     /// 文本基面 CPU 像素缓存:键 = (层, 基面身份 `raw.hash`)。
@@ -558,6 +559,7 @@ impl TextComposer {
             catalog_cache: None,
             catalog_faces: None,
             tunnel: None,
+            substitution: None,
             cache_bytes: 0,
             base_cache: BTreeMap::new(),
             base_cache_bytes: 0,
@@ -594,6 +596,7 @@ impl TextComposer {
             catalog_cache: None,
             catalog_faces: None,
             tunnel: None,
+            substitution: None,
             cache_bytes: 0,
             base_cache: BTreeMap::new(),
             base_cache_bytes: 0,
@@ -728,20 +731,40 @@ impl TextComposer {
         self.base_cache_bytes = 0;
     }
 
+    /// Sets the characters swapped when drawn (UIF patches); `None` = off.
+    pub fn set_substitution(&mut self, substitution: Option<yu_format::text::CharSubstitution>) {
+        if self.substitution == substitution {
+            return;
+        }
+        self.substitution = substitution;
+        self.compose_cache.clear();
+        self.base_cache.clear();
+        self.decode_cache.clear();
+        self.cache_bytes = 0;
+        self.base_cache_bytes = 0;
+    }
+
     /// 按显示 codec + 隧道解码整段文本。
     fn decode_display(&self, codec: Codec, bytes: &[u8]) -> (Vec<char>, usize) {
-        match &self.tunnel {
+        let (mut chars, invalid) = match &self.tunnel {
             Some(tunnel) => TextCodec::with_tunnel(codec, tunnel).decode_lossy(bytes),
             None => TextCodec::new(codec).decode_lossy(bytes),
+        };
+        if let Some(sub) = &self.substitution {
+            for c in &mut chars {
+                *c = sub.apply(*c);
+            }
         }
+        (chars, invalid)
     }
 
     /// 单个字形单元(1/2 字节)按显示 codec + 隧道解码。
     fn decode_display_char(&self, codec: Codec, bytes: &[u8]) -> Option<char> {
-        match &self.tunnel {
+        let c = match &self.tunnel {
             Some(tunnel) => TextCodec::with_tunnel(codec, tunnel).decode_char(bytes),
             None => TextCodec::new(codec).decode_char(bytes),
-        }
+        }?;
+        Some(self.substitution.as_ref().map_or(c, |sub| sub.apply(c)))
     }
 
     /// [`Self::decode_display`] 的缓存版本(`(codec, 字节)` → 解码结果)。

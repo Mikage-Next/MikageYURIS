@@ -90,6 +90,46 @@ impl CodecConfig {
 pub struct DisplayConfig {
     pub default: Codec,
     pub tunnel: Option<TunnelTable>,
+    /// Characters swapped when drawn (UIF `character_substitution`).
+    pub substitution: Option<CharSubstitution>,
+}
+
+/// A one-to-one character swap applied to decoded text before it is drawn.
+///
+/// Translation patches made with AtomCrafty's UniversalInjectorFramework
+/// (a `winmm.dll` proxy configured by `uif_config.json`) keep the scripts in
+/// Shift-JIS: a hanzi Shift-JIS lacks is written as a spare kanji it has,
+/// and UIF swaps it back when the text is drawn. Pairs come from
+/// `source_characters` and `target_characters` by position.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct CharSubstitution {
+    map: BTreeMap<char, char>,
+}
+
+impl CharSubstitution {
+    /// Pairs `source` and `target` by position (UIF stops at the shorter one).
+    #[must_use]
+    pub fn from_pairs(source: &str, target: &str) -> Self {
+        Self {
+            map: source.chars().zip(target.chars()).collect(),
+        }
+    }
+
+    #[must_use]
+    pub fn len(&self) -> usize {
+        self.map.len()
+    }
+
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.map.is_empty()
+    }
+
+    /// The character drawn for `c`.
+    #[must_use]
+    pub fn apply(&self, c: char) -> char {
+        self.map.get(&c).copied().unwrap_or(c)
+    }
 }
 
 impl Default for DisplayConfig {
@@ -97,6 +137,7 @@ impl Default for DisplayConfig {
         Self {
             default: Codec::Cp932,
             tunnel: None,
+            substitution: None,
         }
     }
 }

@@ -730,6 +730,20 @@ impl Renderer {
         }
     }
 
+    fn set_text_substitution(&mut self, substitution: Option<yu_format::text::CharSubstitution>) {
+        match self {
+            Renderer::Soft(renderer) => renderer.text_composer().set_substitution(substitution),
+            Renderer::Wgpu {
+                renderer, check, ..
+            } => {
+                renderer.text_composer().set_substitution(substitution.clone());
+                if let Some(soft) = check.as_mut() {
+                    soft.text_composer().set_substitution(substitution);
+                }
+            }
+        }
+    }
+
     /// 纹理缓存(`MOVIE` 影片帧注入等宿主合成资产用)。
     fn textures_mut(&mut self) -> &mut TextureStore {
         match self {
@@ -960,6 +974,9 @@ impl Engine {
         // 显示层隧道表必须在首帧文本前注入;后端初始化时还没有 profile。
         if display.tunnel.is_some() {
             renderer.set_text_tunnel(display.tunnel.clone());
+        }
+        if display.substitution.is_some() {
+            renderer.set_text_substitution(display.substitution.clone());
         }
         // 宿主附加字体字节(跨平台注入口):必须在任何字体枚举/文本解析前
         // 注入 —— 无系统字体的目标(浏览器)只有这一条来源;Android 用它

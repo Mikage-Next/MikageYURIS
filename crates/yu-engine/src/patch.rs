@@ -14,7 +14,7 @@
 //! 各宿主(桌面/serve/Android/wasm)共用这套类型 + [`PatchSelection`],
 //! 只负责把用户选择/`codecs.json` 传进来。
 
-use yu_format::text::{CodecConfig, DisplayConfig, TunnelTable};
+use yu_format::text::{CharSubstitution, CodecConfig, DisplayConfig, TunnelTable};
 use yu_format::Codec;
 use yu_vfs::LookupKey;
 
@@ -90,6 +90,8 @@ pub struct PatchProfile {
     pub source: PatchSource,
     /// 识别证据(供日志/诊断)。
     pub evidence: Vec<String>,
+    /// Characters swapped when drawn (`uif_config.json`); any route.
+    pub substitution: Option<CharSubstitution>,
 }
 
 /// 补丁配置的来源(日志/诊断用,便于判断“为什么是这个编码”)。
@@ -127,6 +129,7 @@ impl Default for PatchProfile {
             tunnel: None,
             source: PatchSource::Default,
             evidence: Vec::new(),
+            substitution: None,
         }
     }
 }
@@ -204,10 +207,17 @@ impl PatchSelection {
     /// the scripts' text when no patch file says what it is (see
     /// [`detect_with_key`]).
     pub fn profile_with_key(self, project: &Project, key: [u8; 4]) -> Result<PatchProfile, Failure> {
-        match self.kind {
-            PatchKind::Auto => detect_with_key(project, Some(key)),
-            _ => self.profile(project),
+        let mut profile = match self.kind {
+            PatchKind::Auto => detect_with_key(project, Some(key))?,
+            _ => self.profile(project)?,
+        };
+        // UIF substitution works on top of any text route (its patches keep
+        // the scripts in Shift-JIS), so it is read whatever the kind.
+        if let Some(sub) = read_uif(project)? {
+            profile.evidence.push(format!("uif_config.json: {} substituted characters", sub.len()));
+            profile.substitution = Some(sub);
         }
+        Ok(profile)
     }
 }
 
@@ -227,6 +237,7 @@ impl PatchProfile {
         DisplayConfig {
             default: self.text_default,
             tunnel: self.tunnel.clone(),
+            substitution: self.substitution.clone(),
         }
     }
 
@@ -400,6 +411,31 @@ fn read_manifest(project: &Project) -> Result<Option<PatchProfile>, Failure> {
     Ok(Some(profile))
 }
 
+/// The `character_substitution` table of a UniversalInjectorFramework
+/// patch (`uif_config.json` next to the exe), when it is enabled.
+fn read_uif(project: &Project) -> Result<Option<CharSubstitution>, Failure> {
+    let Some(bytes) = read_any(project, b"uif_config.json", "uif_config.json")? else {
+        return Ok(None);
+    };
+    Ok(uif_substitution(&bytes))
+}
+
+/// Parses a `uif_config.json`; `None` when the feature is off or empty.
+/// Keys other than the two character strings (`remain`, `repeat`...) are
+/// bookkeeping of the patch tools; UIF itself ignores them.
+#[must_use]
+pub fn uif_substitution(bytes: &[u8]) -> Option<CharSubstitution> {
+    let text = std::str::from_utf8(bytes.strip_prefix(b"\xef\xbb\xbf").unwrap_or(bytes)).ok()?;
+    let value = json::parse(text).ok()?;
+    let feature = value.as_object()?.get("character_substitution")?.as_object()?;
+    if feature.get("enable").and_then(json::Value::as_bool) != Some(true) {
+        return None;
+    }
+    let chars = |key: &str| feature.get(key).and_then(json::Value::as_str).unwrap_or("").to_string();
+    let sub = CharSubstitution::from_pairs(&chars("source_characters"), &chars("target_characters"));
+    (!sub.is_empty()).then_some(sub)
+}
+
 fn parse_codec_object(value: &json::Value) -> Result<CodecConfig, Failure> {
     let object = value
         .as_object()
@@ -496,4 +532,21 @@ fn read_any(
 pub fn describe(project: &Project) -> Result<String, Failure> {
     let profile = detect(project)?;
     Ok(format!("{} evidence={:?}", profile.summary(), profile.evidence))
+}
+
+#[cfg(test)]
+mod uif_tests {
+    use super::*;
+
+    #[test]
+    fn uif_pairs_by_position_only_when_enabled() {
+        let on = r#"{"character_substitution":{"enable":true,"source_characters":"堯業輩","target_characters":"啊业","remain":["唎"]}}"#;
+        let sub = uif_substitution(on.as_bytes()).unwrap();
+        assert_eq!(sub.len(), 2);
+        assert_eq!(sub.apply('堯'), '啊');
+        assert_eq!(sub.apply('業'), '业');
+        assert_eq!(sub.apply('輩'), '輩');
+        assert!(uif_substitution(on.replace("true", "false").as_bytes()).is_none());
+        assert!(uif_substitution(b"{}").is_none());
+    }
 }
