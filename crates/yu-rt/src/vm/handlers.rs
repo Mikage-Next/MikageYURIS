@@ -101,6 +101,7 @@ pub enum HandlerKind {
     Loopcontinue,
     Wait,
     Fps,
+    Product,
     End,
     Let,
     Declare,
@@ -284,6 +285,7 @@ pub fn build_handler_table(yscm: &crate::tables::YscmTable) -> Vec<HandlerKind> 
                 "TEXTINFO" => HandlerKind::Textinfo,
                 "LABELINFO" => HandlerKind::Labelinfo,
                 "DIALOG" => HandlerKind::Dialog,
+                "PRODUCT" => HandlerKind::Product,
                 // 0.495 有独立处理体但无脚本可见返回(TRAY=托盘图标)。
                 "TRAY" => HandlerKind::Domain(Domain::System),
                 "CLIPACT" => HandlerKind::Clipact,
@@ -504,6 +506,7 @@ impl Vm {
             HandlerKind::Loopcontinue => self.op_loopcontinue(st, cmd),
             HandlerKind::Wait => self.op_wait(st, task, cmd),
             HandlerKind::Fps => self.op_fps(st, cmd),
+            HandlerKind::Product => self.op_product(st, cmd),
             HandlerKind::End => self.op_end(st, cmd),
             HandlerKind::Let => self.op_let(st, cmd),
             HandlerKind::Declare => self.op_declare(st, cmd),
@@ -1234,6 +1237,51 @@ impl Vm {
     }
 
     /// `FPS[SET=1..256 SKIP=0/1]`:手册 `system/fps.html`。
+    /// `PRODUCT`: no manual page; it calls the product's own extension in
+    /// its exe. `COM=1` writes the product build to `LET`, which the
+    /// scripts of えろげー！～Hもゲームも開発三昧～ (2010, 0.290) compare
+    /// with their own number before they start (a mismatch ENDs the game);
+    /// that exe returns 1830 (its handler at 0x43f830). Other `COM` values
+    /// (Erewhon's es.ONH.* pass 1001 and two numbers and read nothing back)
+    /// and unknown builds only evaluate their parameters.
+    fn op_product(&mut self, st: &mut ExecState, cmd: &Cmd) -> Result<StepOutcome, VmError> {
+        let names = self.param_names(cmd.opcode);
+        let mut com: Option<i64> = None;
+        let mut target: Option<crate::expr::LValue> = None;
+        for w in &cmd.windows {
+            if w.rec.length == 0 {
+                continue;
+            }
+            match names.get(w.rec.kind as usize).map(String::as_str) {
+                Some("LET") => target = Some(self.eval_lvalue_window(st, w)?),
+                Some("COM") => com = self.eval_window(st, w)?.as_int(),
+                _ => {
+                    self.eval_window(st, w)?;
+                }
+            }
+        }
+        if let (Some(1), Some(target), Some(build)) = (com, target, self.product_build()) {
+            self.write_target(st, &target, &Value::Int(build))?;
+        }
+        Ok(StepOutcome::Continue)
+    }
+
+    /// The product build `PRODUCT COM=1` answers, for the builds whose exe
+    /// was read: keyed by the engine version and the window title.
+    fn product_build(&self) -> Option<i64> {
+        const BUILDS: &[(u32, &[u8], i64)] = &[(
+            290,
+            // えろげー！～Hもゲームも開発三昧～ in CP932.
+            b"\x82\xa6\x82\xeb\x82\xb0\x81[\x81I\x81`H\x82\xe0\x83Q\x81[\x83\x80\x82\xe0\x8aJ\x94\xad\x8eO\x96\x86\x81`",
+            1830,
+        )];
+        let config = &self.tables().boot.config;
+        BUILDS
+            .iter()
+            .find(|(version, title, _)| *version == config.version && config.title == *title)
+            .map(|(_, _, build)| *build)
+    }
+
     fn op_fps(&mut self, st: &mut ExecState, cmd: &Cmd) -> Result<StepOutcome, VmError> {
         let mut fps = self.fps();
         let mut skip = self.skip();

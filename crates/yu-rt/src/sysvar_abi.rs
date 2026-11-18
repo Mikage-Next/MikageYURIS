@@ -83,6 +83,7 @@ pub struct SysVarTable {
 }
 
 const ABI_TSV_0255: &str = include_str!("../data/sysvar-abi-0255-81a05c0c.tsv");
+const ABI_TSV_0290: &str = include_str!("../data/sysvar-abi-0290-derived.tsv");
 const ABI_TSV_0292: &str = include_str!("../data/sysvar-abi-0292-e7016b1e.tsv");
 const ABI_TSV_0450: &str = include_str!("../data/sysvar-abi-0450-ad2025bf.tsv");
 const ABI_TSV_0451: &str = include_str!("../data/sysvar-abi-0451-2caf6952.tsv");
@@ -175,6 +176,7 @@ impl SysVarTable {
             Self::from_tsv(ABI_TSV_0451, "sysvar-abi-0451-2caf6952.tsv"),
             Self::from_tsv(ABI_TSV_0450, "sysvar-abi-0450-ad2025bf.tsv"),
             Self::from_tsv(ABI_TSV_0292, "sysvar-abi-0292-e7016b1e.tsv"),
+            Self::from_tsv(ABI_TSV_0290, "sysvar-abi-0290-derived.tsv"),
             Self::from_tsv(ABI_TSV_0255, "sysvar-abi-0255-81a05c0c.tsv"),
         ]
     }
