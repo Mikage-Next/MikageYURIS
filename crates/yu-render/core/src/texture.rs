@@ -1834,6 +1834,12 @@ fn known_extension_format(key: &[u8]) -> Option<ImageFormat> {
 /// 两条路径的输出逐字节相同(`png_libpng_parity` 用例对 1253 张语料做过对拍),
 /// 所以分平台只影响性能,不影响像素。
 fn decode_asset(bytes: &[u8], _tuning: RenderTuning) -> Result<Texture, String> {
+    // YCG (the engine's own format; Erewhon's CHS UI pictures under `.png` names).
+    if yu_format::ycg::is_ycg(bytes) {
+        return yu_format::ycg::decode_rgba(bytes)
+            .map(|(width, height, rgba)| Texture { width, height, rgba })
+            .ok_or_else(|| "malformed YCG picture".to_string());
+    }
     #[cfg(target_os = "android")]
     if is_png(bytes) && _tuning.png_backend == PngBackend::Libpng {
         // 后端选择来自宿主参数(`EngineOptions.tuning.png_backend`;Android

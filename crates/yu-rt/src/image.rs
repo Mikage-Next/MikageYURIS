@@ -7,6 +7,9 @@
 
 /// 从图像字节头返回 `(width, height)`;无法识别/截断返回 `None`。
 pub(crate) fn pixel_size(bytes: &[u8]) -> Option<(u32, u32)> {
+    if let Some(size) = yu_format::ycg::size(bytes) {
+        return Some(size);
+    }
     if bytes.len() >= 24 && bytes.starts_with(b"\x89PNG\r\n\x1a\n") && &bytes[12..16] == b"IHDR" {
         return Some((be32(&bytes[16..20]), be32(&bytes[20..24])));
     }

@@ -14,6 +14,7 @@
 mod codec;
 mod dir;
 pub mod encoding;
+pub mod evb;
 mod key;
 mod mem;
 mod mount;
@@ -21,6 +22,7 @@ pub mod ypf;
 
 pub use codec::Codec;
 pub use dir::DirSource;
+pub use evb::{EvbPackage, EvbSource};
 pub use encoding::{detect as detect_encoding, Decision as EncodingDecision, TextEncoding};
 pub use key::{normalize_component, split_components, LookupKey};
 pub use mem::{MemSource, SharedMem};

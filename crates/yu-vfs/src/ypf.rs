@@ -661,7 +661,35 @@ impl YpfSource {
                 )));
         };
         let file_len = total_len - base_offset;
+        Self::open_in(path, file, base_offset, file_len, codec)
+    }
 
+    /// Opens a pack stored as is inside another file, at `offset` and
+    /// `len` bytes long (a pack in an Enigma Virtual Box package).
+    pub fn open_range(
+        path: impl AsRef<Path>,
+        offset: u64,
+        len: u64,
+        codec: Codec,
+    ) -> Result<Self, Diag> {
+        let path = path.as_ref().to_path_buf();
+        let file = File::open(&path).map_err(|e| io_error(&path, e))?;
+        let total_len = file.metadata().map_err(|e| io_error(&path, e))?.len();
+        if offset.checked_add(len).is_none_or(|end| end > total_len) {
+            return Err(Diag::fatal(code::vfs::YPF_BAD_HEADER, Boundary::Data)
+                .at_data(path_bytes(&path), offset)
+                .with_detail(format!("pack range {offset:#x}+{len:#x} beyond the file")));
+        }
+        Self::open_in(path, file, offset, len, codec)
+    }
+
+    fn open_in(
+        path: PathBuf,
+        mut file: File,
+        base_offset: u64,
+        file_len: u64,
+        codec: Codec,
+    ) -> Result<Self, Diag> {
         let mut head = [0u8; HEADER_LEN];
         file.seek(SeekFrom::Start(base_offset))
             .map_err(|e| io_error(&path, e))?;

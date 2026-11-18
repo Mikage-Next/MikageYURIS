@@ -281,7 +281,13 @@ fn open(c: &YurisConfig) -> Result<YurisSession, String> {
         _ => PatchKind::Auto,
     };
 
-    let project = Project::discover(&game_dir, None).map_err(|f| format!("no YU-RIS data: {f}"))?;
+    let mut project = Project::discover(&game_dir, None).map_err(|f| format!("no YU-RIS data: {f}"))?;
+    if let Some(exe) = unsafe { string(c.launcher) }.filter(|s| !s.is_empty()) {
+        let notes = project.set_launcher(std::path::Path::new(&exe)).map_err(|f| format!("launcher {exe}: {f}"))?;
+        for note in notes {
+            log::warn!(target: "yuris-mobile", "launcher {exe}: {note}");
+        }
+    }
     let gpu = create_gpu()?;
     let options = EngineOptions {
         backend: Backend::Wgpu,

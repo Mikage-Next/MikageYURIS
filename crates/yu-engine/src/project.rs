@@ -139,6 +139,12 @@ pub struct Project {
     /// 内容哈希命名 ⇒ 重复写入幂等;所有 `open_source()`/`mount()` 出来的
     /// 数据源共享同一份,渲染器纹理解析与 VM 资产解析看到相同字节。
     overlay: yu_vfs::SharedMem,
+    /// A translation patch's Enigma Virtual Box packages (see
+    /// [`Project::set_launcher`]); empty without a launcher.
+    evb: Vec<yu_vfs::EvbPackage>,
+    /// Packs stored inside those packages: the path they stand in for
+    /// (also listed in `packs`), the package file, offset and length.
+    packed_ypf: Vec<(PathBuf, PathBuf, u64, u64)>,
 }
 
 /// `/api/status` 用的数据入口摘要。
@@ -315,6 +321,8 @@ impl Project {
             loose,
             source_order: SourceOrder::default(),
             overlay,
+            evb: Vec::new(),
+            packed_ypf: Vec::new(),
         })
     }
 
@@ -380,13 +388,17 @@ impl Project {
     /// - `LooseFirst`(模式 0):pack → loose,散盘最终在上;
     /// - `PackFirst`(模式 1):loose → pack,包最终在上。
     fn push_sources(&self, mount: &mut Mount) -> Result<(), Failure> {
+        // Files a launcher packed appear in the game folder: they sit just
+        // above the real loose files.
         match self.source_order {
             SourceOrder::LooseFirst => {
                 self.push_packs(mount)?;
                 self.push_loose(mount)?;
+                self.push_evb(mount)?;
             }
             SourceOrder::PackFirst => {
                 self.push_loose(mount)?;
+                self.push_evb(mount)?;
                 self.push_packs(mount)?;
             }
         }
@@ -396,13 +408,86 @@ impl Project {
     }
 
     fn push_packs(&self, mount: &mut Mount) -> Result<(), Failure> {
-        for path in &self.packs.base {
-            mount.push(Box::new(open_ypf(path)?));
-        }
-        for path in &self.packs.updates {
-            mount.push(Box::new(open_ypf(path)?));
+        for path in self.packs.base.iter().chain(&self.packs.updates) {
+            mount.push(Box::new(self.open_pack(path)?));
         }
         Ok(())
+    }
+
+    fn open_pack(&self, path: &Path) -> Result<YpfSource, Failure> {
+        match self.packed_ypf.iter().find(|(p, ..)| p == path) {
+            Some((_, file, offset, len)) => YpfSource::open_range(file, *offset, *len, CODEC)
+                .map_err(|d| Failure::runtime(format!("打开 {} 失败: {d}", path.display()))),
+            None => open_ypf(path),
+        }
+    }
+
+    fn push_evb(&self, mount: &mut Mount) -> Result<(), Failure> {
+        if self.evb.is_empty() {
+            return Ok(());
+        }
+        let source = yu_vfs::EvbSource::new(self.evb.clone(), CODEC, |name| {
+            !is_ypf_name(Path::new(name)) && !packed_save_file(name)
+        })
+        .map_err(|d| Failure::runtime(format!("EVB: {d}")))?;
+        mount.push(Box::new(source));
+        Ok(())
+    }
+
+    /// Mounts the files a translation patch's launcher packed with Enigma
+    /// Virtual Box, in the exe itself or in the external package it names
+    /// (Erewhon's CHS exe and `erewhon_chs.mys`). They act as files in the
+    /// game folder: a packed `.ypf` replaces the real pack at its path (or
+    /// joins the packs), other files sit above the loose files. Packed
+    /// `save/` files are left out: they are the translator's own saves and
+    /// settings (Erewhon's `save/config.sd` would skip the first-run setup
+    /// that places the message window).
+    ///
+    /// Returns notes on what could not be used.
+    pub fn set_launcher(&mut self, exe: &Path) -> Result<Vec<String>, Failure> {
+        let (packages, mut notes) = yu_vfs::evb::launcher_packages(exe)
+            .map_err(|d| Failure::runtime(format!("EVB {}: {d}", exe.display())))?;
+        for pkg in &packages {
+            for f in pkg.files() {
+                if !is_ypf_name(Path::new(&f.name)) || packed_save_file(&f.name) {
+                    continue;
+                }
+                if !f.is_plain() {
+                    notes.push(format!("{}: compressed in its package", f.name));
+                    continue;
+                }
+                let stand_in = self.root.join(&f.name);
+                if self.packed_ypf.iter().any(|(p, ..)| same_file_name(p, &stand_in)) {
+                    continue;
+                }
+                let existing = self
+                    .packs
+                    .base
+                    .iter()
+                    .chain(&self.packs.updates)
+                    .find(|p| same_file_name(p, &stand_in))
+                    .cloned();
+                let stand_in = existing.unwrap_or(stand_in);
+                self.packed_ypf
+                    .push((stand_in.clone(), pkg.path().to_path_buf(), f.offset, f.size));
+                if !self.packs.base.contains(&stand_in) && !self.packs.updates.contains(&stand_in) {
+                    if update_number(&stand_in).is_some() {
+                        self.packs.updates.push(stand_in);
+                        self.packs.updates.sort_by_key(|p| update_number(p));
+                    } else {
+                        self.packs.base.push(stand_in);
+                        self.packs.base.sort();
+                    }
+                }
+            }
+        }
+        self.evb = packages;
+        Ok(notes)
+    }
+
+    /// The launcher's packages (empty without one).
+    pub fn evb_packages(&self) -> &[yu_vfs::EvbPackage] {
+        &self.evb
     }
 
     fn push_loose(&self, mount: &mut Mount) -> Result<(), Failure> {
@@ -491,6 +576,16 @@ fn scan_dirs(roots: &[&Path]) -> Vec<PathBuf> {
         }
     }
     dirs
+}
+
+/// A packed file under `save/` (the patch author's saves and settings).
+fn packed_save_file(name: &str) -> bool {
+    name.get(..5).is_some_and(|p| p.eq_ignore_ascii_case("save/"))
+}
+
+/// Same path, ignoring ASCII case (Windows file names).
+fn same_file_name(a: &Path, b: &Path) -> bool {
+    a.to_string_lossy().replace('\\', "/").eq_ignore_ascii_case(&b.to_string_lossy().replace('\\', "/"))
 }
 
 fn is_ypf_name(path: &Path) -> bool {
