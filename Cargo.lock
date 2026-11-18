@@ -2540,6 +2540,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "19b30a45b0cd0bcca8037f3d0dc3421eaf95327a17cad11964fb8179b4fc4832"
 
 [[package]]
+name = "rtrb"
+version = "0.3.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "342e1478a6e1c839e7405033eabfdc954d4d5dabd39f34e83420a43a95acfb04"
+
+[[package]]
 name = "rustc-hash"
 version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4416,6 +4422,21 @@ dependencies = [
  "flate2",
  "yu-format",
  "yu-log",
+]
+
+[[package]]
+name = "yuris-mobile"
+version = "0.4.0"
+dependencies = [
+ "bytemuck",
+ "log",
+ "raw-window-handle",
+ "rtrb",
+ "wgpu",
+ "yu-backend-wgpu",
+ "yu-engine",
+ "yu-rt",
+ "yu-sound",
 ]
 
 [[package]]

@@ -1,0 +1,21 @@
+[package]
+name = "yuris-mobile"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "C interface for app hosts (iOS): runs a game into a Metal view and lets the host pull its sound. Header: platform/ios/include/yuris_mobile.h."
+
+[lib]
+name = "yuris_mobile"
+crate-type = ["cdylib", "staticlib", "rlib"]
+
+[dependencies]
+bytemuck = "1.25"
+log = "0.4"
+raw-window-handle = "0.6"
+rtrb = "0.3"
+wgpu = "30.0.1"
+yu-backend-wgpu = { path = "../../yu-render/wgpu" }
+yu-engine = { path = "../../yu-engine" }
+yu-rt = { path = "../../yu-rt" }
+yu-sound = { path = "../../yu-sound" }
