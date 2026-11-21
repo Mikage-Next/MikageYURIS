@@ -13825,7 +13825,7 @@ APK 内 lib/arm64-v8a/libyu_host_android.so = jniLibs 当前产物
 SetupActivity 截图确认「资产预取:关」「快照延迟:关」两个开关在位
 ```
 - 设备 `c1d09694`(24117RK2CC),数据目录按壳内持久化配置
-  `/storage/emulated/0/krkr/コトネイロver1.02/コトネイロ`。
+  `/storage/emulated/0/krkr/<game-b>ver1.02/<game-b>`。
 - 未提交、未推送。
 
 ## 成果 GFX-BANDWIDTH (2026-11-09) · 立绘链死写消除/过渡端点别名 + 手机 SIZE 双线性开关 + 上屏尺寸自愈
@@ -14145,7 +14145,7 @@ movie-clean(desktop wgpu,debug 模式,进主菜单):
 性能(对照 = git archive HEAD 未改动基线):
   movie-clean bench 12 帧:ours avg 24.04ms / slowest 112.3ms;
     baseline avg 23.19ms / slowest 108.2ms(1.3M 突发帧 ≈86ns/命令,噪声内)
-  kotoneiro bench 2100 帧:ours avg 34.93ms / p95 56.97ms;
+  <game-b> bench 2100 帧:ours avg 34.93ms / p95 56.97ms;
     baseline avg 37.31ms / p95 60.00ms(未劣化)
 ```
 
@@ -14156,7 +14156,7 @@ movie-clean(desktop wgpu,debug 模式,进主菜单):
 
 ## 成果 BT-HOVER (2026-11-11) · 置灰按钮不再高亮相邻按钮:`CGINFO[SX/SY]` 改读 `COPY/COPY2` 切片矩形
 
-**问题**:kotoneiro(v494 商业包)正文底栏的 VOICE 在无声行置灰
+**问题**:<game-b>(v494 商业包)正文底栏的 VOICE 在无声行置灰
 (`@BT.N=1`);鼠标移入置灰按钮时旁边的按钮出现 OVER 高亮,像还能点。
 官方同一位置不高亮。
 
@@ -14170,7 +14170,7 @@ movie-clean(desktop wgpu,debug 模式,进主菜单):
 - 官方 `COPY2` 只复制图像,但目标**显示矩形** = 复制块尺寸(官方
   `+0x78/+0x7c`,见下条 REA);本内核快照表面按 DIV-GFX-077 保持源
   表面尺寸(`SIZE` 语义)。旧实现把源表面尺寸当成显示矩形:
-  kotoneiro 的 `btn_voice_bt4` 合图 264 宽(4×66),`CGINFO[SX]` 返回
+  <game-b> 的 `btn_voice_bt4` 合图 264 宽(4×66),`CGINFO[SX]` 返回
   264,每个按钮命中矩形覆盖四个按钮。置灰按钮被 `@BT.N` 门控跳过,
   相邻按钮的超大矩形接住 hover ⇒ 高亮。
 - 官方证据(REA 0.495 `FUN_0042f809`,sha256 `4f5eefa3…138f`):`ID2`
@@ -14208,7 +14208,7 @@ cargo build --workspace --all-targets        → 0 error / 0 warning
 cargo test -p yu-gfx --test info_query        → 16 passed(含新增 3 条)
 cargo test -p yu-gfx                          → 全部 test result: ok
 
-hover 探针(kotoneiro,约 1500 帧进正文、置灰 VOICE 行):
+hover 探针(<game-b>,约 1500 帧进正文、置灰 VOICE 行):
   置灰 VOICE (655,812) → visible=[]            ← 修复前 = BT.OVER...QLOAD
   QLOAD     (587,812) → visible=[BT.OVER...QLOAD]
   AUTO      (722,812) → visible=[BT.OVER...AUTO]
@@ -14652,7 +14652,7 @@ cargo test -p yu-engine --lib                            → 39 passed; 0 failed
 cargo test -p yu-engine --lib(无 SDK 环境,CI 口径)      → 39 passed; 探测用例显式跳过
 cargo test -p yu-format --test yssd_roundtrip            → 2 passed; 0 failed
 v474 旧运行时 headless 1 帧 --log-level debug
-  → save container version 0x138 from aorio.exe
+  → save container version 0x138 from <0.474 exe>
 0.495 工程 headless 1 帧 --log-level debug
   → save container version 0x1e0 from yu-ris.exe
 ```
@@ -14946,7 +14946,7 @@ cargo build --workspace --all-targets → Finished
   修复 soft 丢失同帧 `RECTPAINT3/SIZE` 结果、与 wgpu 分歧的问题。
 - **整面覆盖折叠**:新增 `transition_covers_target`:写矩形覆盖目标整面、
   目标不在 `source/source2/source3` 中、且源/目标没有历史 `SIZE` 时,按纯写
-  折叠旧 T2/锚定 T1;部分落点仍保留历史。逐帧 aorio T2 不再线性增长。
+  折叠旧 T2/锚定 T1;部分落点仍保留历史。逐帧 <0.474 样本> T2 不再线性增长。
 - **T2 缺遮罩**:`cgact_transition` 显式接收 `is_t2`,缺 `ID3` 报
   `ARG_MISSING`,不再静默降级成 T1。
 - **soft T2 越界**:源 B/遮罩按源坐标裁行;`ux0` 越界取零,不再读到下一行。
@@ -15407,7 +15407,7 @@ load_system_fonts: 163.4ms faces=248 catalog=127
   - `pure_attribute_cg_after_copy_keeps_draw_size_untouched`
     (COPY2 后 `CG[E/X/Y/MODE]` 无 SX/SY,`Image.size` 必须保持
     `None`,不能被区域矩形污染)。
-- 回归修复(同日,桌面实机 kotoneiro):纯属性 `CG`(无 `SX/SY`)曾被
+- 回归修复(同日,桌面实机 <game-b>):纯属性 `CG`(无 `SX/SY`)曾被
   `apply_layer_params` 用 COPY 矩形作为缺省轴写进 `LayerKind::Image.size`,
   把源尺寸按钮状态快照压扁(底部按钮行 AUTO 处错位)。现仅当至少一个
   `SX/SY` 出现时才解析缺省轴;纯属性更新不再触碰绘制尺寸。
@@ -15427,7 +15427,7 @@ load_system_fonts: 163.4ms faces=248 catalog=127
     该差异与影片后端相关文件同属并行工作线,不随本成果提交。
 - 台账:`DIV-GFX-077` 增 §2.4(最终口径与嵌套 COPY 残余)、
   `DIV-GFX-089` 增 §7(COPY 矩形成为 RESIZE 基数)。
-- 实机(0.486 样本 `光翼戦姫エクスティアコンチェルト4`):
+- 实机(0.486 样本 `<game-d>`):
   - headless 600 帧:标题屏渲染正常;`gfx.info.unsupported` 0 次,
     仅 1 个既有 `asset.missing`(前端按钮缺图,与本修复无关);
   - desktop 标题屏:鼠标移到 CONFIG(约 278,415)后该行出现
@@ -15559,15 +15559,16 @@ load_system_fonts: 163.4ms faces=248 catalog=127
   `nativeMovieCodecs`;`crates/yu-platform/README.md` 增加新 crate;
   `crates/yu-cli/README.md` 补 `--movie-backend`。
 
-## 成果 README-BETA-SERIES (2026-11-17) · README 版本线改按官方 BETA 2/3/4 归档,5xx 标注第三方
+## 成果 README-BETA-SERIES (2026-11-17) · README 版本线改按官方 BETA 2/3/4 归档;5xx 商业分支(2026-11-20 勘误)
 
 - 版本描述按官方系列划分（README 不引用外部归档仓库作为依据）：
   BETA 2 = 0.255（0.55）；BETA 3 = 0.276 样本、0.292（0.92）；
   BETA 4 = 0.450–0.495。
-- 5xx 改为「第三方魔改引擎，不属官方系列」，不写社团名；
-  `README.md` / `README.zh-CN.md` 的支持范围表与简介同步。
+- 5xx 改为「YU-RIS 官方商业分支（商业发行版），不属 BETA 2/3/4 主线」，
+  不写社团名；`README.md` / `README.zh-CN.md` 的支持范围表与简介同步。
+  **2026-11-20 勘误：旧表述「第三方魔改引擎」错误，作废。**
 - 版本标签（shields badge）改为 BETA 4（0.450–0.495，绿）、BETA 3（0.276–0.292，黄）、
-  BETA 2（0.255，黄）、5xx third-party（灰）。
+  BETA 2（0.255，黄）、5xx official-commercial（灰）。
 - 验证：4 个 shields.io 徽章 URL 均返回 HTTP 200；README 内 `4xx/2xx` 字样已清零。
 - 本轮未执行任何 git 写操作,等待主人审阅。
 
@@ -15583,7 +15584,7 @@ load_system_fonts: 163.4ms faces=248 catalog=127
 - **参数缺失取证**:`SET` 缺失时值槽初始化为 0(0x42c998..0x42c9b6)
   ⇒ 掩码 0 = 四边都不裁 = 原地 no-op,不是 `gfx.imageop.set.missing`。
 - 语料普查(`census_params CGACT:TRIM`):project-eris 0/141、
-  0.486 ExSTIA_C4 0/260、kotoneiro 1/160(s27 macro.yst pc5803
+  0.486 <game-d>_C4 0/260、<game-b> 1/160(s27 macro.yst pc5803
   line 8268,仅 `ID+TRIM`,无 SET)。唯一实调用就是无 SET。
 - 修复:
   - gfx 移除 `trim && set.is_none()` 的 Unimplemented;缺省 SET 允许
@@ -15597,7 +15598,7 @@ load_system_fonts: 163.4ms faces=248 catalog=127
   `cargo test -p yu-backend-soft` 69 passed;
   `cargo test -p yu-backend-wgpu` 全绿(surfaces 32、39 主 suite)。
 - **仍 open(需设计确认)**:非零 `SET` 的裁后矩形回写。gfx 命令时刻
-  没有像素,且 TRIM 可能跟在 BLUR/COPY 之后(kotoneiro 宏为
+  没有像素,且 TRIM 可能跟在 BLUR/COPY 之后(<game-b> 宏为
   BLUR→TRIM→BLUR5),资产级 alpha bbox 会取到加工前边界;需同步
   CPU 表面回放或后端回报 + 同 tick 时序取舍。未凭猜测实现。
 - 本轮未执行任何 git 写操作,等待主人审阅。
@@ -15826,3 +15827,557 @@ cargo check --workspace --all-targets
 - Android 失败 open 后 `MOVIEINFO[PLAY]` 变为 0;成功播放路径不变。
 - 换片关闭旧后端会释放旧 codec/temp;pending 音量/几何仍按原逻辑补发。
 - 未修改 `yu-emote`;未执行 git 写操作。
+
+## 成果 FONT-FALLBACK (2026-11-18) · 跨平台逐字形缺字回退开关
+
+### 关联
+
+- `DIV-FONT-012` §5「无逐字形缺字回退」挂账项;官方在 Windows 上由 GDI
+  font linking 补字,候选顺序来自注册表 `SystemLink`,无法逐项 1:1。
+- 因此做成 **显式 opt-in**:默认关 = 保持官方「缺字即不画」的现有行为,
+  宿主参数开启后按本 crate 的确定序补字形。
+
+### 改动
+
+- `yu-font::FontSource::face_has_char`:缺字回退的探测入口。系统字体
+  逐文件读取 charmap 后立即丢弃,不写入 `data_cache` —— 否则扫描几十个
+  候选 face 会把每个字体文件永久留在内存(Android Noto CJK 单个 ~20MB)。
+- `yu-font::FontRenderer::set_fallback`:逐字形回退开关 + `(主 face, char)`
+  → 回退 face 的缓存(失败也缓存);只在主 face 返回
+  `font.glyph_missing` 时触发,坏字体/非法尺寸仍按原诊断失败。回退 face
+  的 advance/bearing 生效,基线仍用主 face 的 ascent;切换开关清字形缓存,
+  避免关掉后继续命中回退字形。
+- 候选序:宿主注入字体(`FaceOrigin::Embedded`,汉化/发行方补字体)→ 系统
+  字体;同类按 `FontSource::catalog` 的 family 序取代表 face。
+- `RenderTuning::font_fallback`(默认 `false`)接入 `TextComposer` 三个
+  `FontRenderer` 构造点;CPU 合成与 GPU 字形收集共用 `render_glyph`,
+  两条路径同时生效。
+- CLI `--font-fallback[=on|off]`(兼容别名 `YURIS_FONT_FALLBACK`)、
+  `--help`、`to_cli_args` 透传;Android `run-config.json` 同名键
+  `font_fallback`。
+- Android Java 壳:`SetupActivity` 高级设置新增「缺字补全」开关(默认关,
+  SharedPreferences 键 `font_fallback`),`MainActivity` 经
+  `EXTRA_FONT_FALLBACK` 写入 run-config JSON;`debug/run-config.json`
+  调试覆盖同样生效。Rust 启动日志 `tuning={... font_fallback=...}`
+  可直接确认取值。
+- 文档:`docs/cross-platform.md` 参数表、`docs/font-contract.md` §3.1.1、
+  `DIV-FONT-012` 状态/残余、`android/NATIVE_API.md`、`yu-font/README.md`。
+- 测试:`font_fallback_completes_missing_glyph_only_when_enabled`(默认关
+  报缺字;开启后出墨迹、advance 用回退 face、重复渲染一致;关闭后不再命中)
+  与 `font_fallback_still_reports_uncodable_characters`。
+
+### 验证
+
+```text
+cargo check --workspace --all-targets
+  → Finished dev profile(CL/CFLAGS/CXXFLAGS=-utf-8,TEMP 指到 ASCII 可写目录)
+cargo test -p yu-font
+  → 全部通过;glyphs: 7 passed(回退对 U+D55C primary=119 fallback=106)
+cargo test -p yu-render-core --lib
+  → 28 passed; 0 failed
+cargo test -p yu-gfx --test text_pipeline
+  → 17 passed; 0 failed
+cargo test -p yu-cli --lib args
+  → 4 passed; 0 failed(含 --font-fallback 解析与 to_cli_args 往返)
+cargo test -p yu-host-android --lib --tests
+  → lib 25 passed(含 run_config_parses_render_feature_switches);
+    session 2 passed;dialog 1 ignored(需真实语料)
+yu-cli run --help
+  → 列出 --font-fallback[=on|off]
+BUILD_TYPE=release tools/android/build.sh arm64-v8a x86_64
+  → BUILD SUCCESSFUL in 28s;app-release.apk 28M
+unzip -p app-release.apk classes.dex | grep font_fallback
+  → 命中(Java 壳意图/JSON 键已进 APK)
+unzip -p app-release.apk lib/arm64-v8a/libyu_host_android.so | grep font_fallback
+  → 命中(so 已重编)
+```
+
+CLI 日志纪律测试 `cargo test -p yu-cli` 仍有既有失败(与本轮无关):
+`silent_fallback_audit` 报 `yu-gfx/src/state.rs` 29>18、`yu-rt/src/tables.rs`
+白名单缺项、`yu-rt/src/vm/handlers.rs` 82>80;`src_has_no_direct_terminal_macros`
+报 `yu-engine/src/engine.rs` 含 `println!`/`eprintln!`。这些文件本轮未改动。
+
+### 影响边界
+
+- 默认关:桌面/Android 都不开启时诊断/像素/性能与之前一致,继续按官方
+  缺字行为。Android 壳的开关持久化在同一份 SharedPreferences,
+  「清除已保存的选择」会把它一并复位。
+- 开启后只补 `font.glyph_missing`;回退字形不做跨 face kerning,脚本
+  「每字宽 = SX」的居中假设对比例回退字体仍可能偏移(归 DIV-FONT-001)。
+- 首个缺字会按 catalog 扫描候选字体;每个 `(主 face, char)` 只扫一次,
+  未命中同样缓存。GDI `SystemLink` 的候选顺序没有复刻。
+- 未执行 git 写操作。
+
+## 成果 YCG-HEADER (2026-11-18) · YCG 尺寸头解析,修复首幕 logo 与按钮命中区退化 1×1
+
+### 背景与根因
+
+47x 商业包（0.474–0.488）的 `.png` 条目是 YCG 容器（DIV-GFX-091 已修
+像素解码）。但 `yu-rt/src/image.rs::pixel_size` 仍只认 PNG/BMP/GIF/JPEG，
+`CGINFO[SX/SY]` 对 YCG 资产解析失败并按 0/1×1 回填：
+
+- `es_sprite.yst` 的暂存/裁剪层按 1×1 放样，可见层停在屏幕外哨兵
+  `(999999999, 999999999)`，首幕品牌 logo 不出现；
+- 0.479 `es_button.yst::es.IDBtnTask` 的矩形判定 `w/h` 来自层尺寸，
+  命中区退化成 1×1，点击已进 VM 也进不了 `CGINFO[ONMOUSE*]` 分支，
+  表现为“能显示画面但不能交互”。
+
+### 改动
+
+- `crates/yu-rt/src/image.rs`：`pixel_size` 增加 YCG 分支
+  （`YCG\0`、`+0x04=width`、`+0x08=height`，LE）；尺寸 0/截断返回
+  `None`。字段与官方 0.479 `FUN_004254e4` 一致。
+- 新增 `image::tests::ycg_header`。
+- 清理本轮临时取证开关（`YU_TRACE_SCRIPT` / `YU_TRACE_LABEL` /
+  `YU_TRACE_INPUT` / `YU_TRACE_ONMOUSE` / `YU_TRACE_GFX_QUERY` /
+  `YU_TRACE_CG` / `YU_TRACE_PC` / `YU_TRACE_TEX`）。
+
+### 验证
+
+```text
+cargo test -p yu-rt --lib image::tests
+  → 5 passed; 0 failed（含 ycg_header）
+
+0.479 样本 A（全新存档，soft）
+  probe_layers 20..300 --px 544,384 --px 640,480
+  → (544,384) 144→255 淡入；(640,480) 19,18,18→34,31,32；
+    与直接解码 cg/bg/logo.png 的中心 BGRA (32,31,34) 一致。
+
+0.479 样本 A 点击确认框（engine frame 1601，cursor 500,390）
+  → [onmouse] layer=:/W0/BT.OFFES.CSEL.BTN.SEL=1=1
+    flag=ONMOUSE2 pointer=(500,390)
+  → CSEL 层组从下一帧消失（ops 18→3），确认框关闭。
+
+0.479 样本 B（全新存档，soft）
+  → 同点位 89→158 淡入，logo 出现。
+
+0.474 样本（PNG 资产）不经过 YCG 分支，启动流程不变。
+```
+
+### 影响边界
+
+- 只影响图像头尺寸解析与依赖它的 `CGINFO[SX/SY]`、COPY/COPY2 快照
+  矩形、精灵/按钮命中区；不改解码像素、调度、输入时序。
+- wgpu headless 探针在本轮 `probe_layers` 采样中未复现 logo（软渲染
+  已复现，实机 wgpu 正常）；暂按探针采样面差异记录，未改后端。
+- 未执行 git 写操作。
+
+## 成果 CSV-XVER (2026-11-19) · BETA4 命令参数跨版本残项:CSV/CSVINFO 与 SAVE/LOAD IDNO
+
+### 背景
+
+BETA4 普查留下四类命令参数残项:0.466 的 `CSV[LINE]`/`CSVINFO[LINE]`、
+0.495 的 `CSVINFO[DATA]`、`SAVE/LOAD[IDNO]`、0.466 的
+`__SAVE_PATH_TYPE`。本轮按「先 REA、后改码」逐项收口。
+
+### 取证(官方 0.466/0.479/0.495 `yu-ris.exe`)
+
+- **0.466 `CSV` = 真实读取器**,不是 0.495 的空桩:
+  入口 `0x431970`(`mov eax,7; call 0x41d56d`),`[0x650201]` 读 `LINE`
+  (1 基行号),`0x431c03`/`0x431d9c` 按行过滤,单元格写 `0x431f58`。
+- **0.466 `CSVINFO` = `0x432050`**:`SIZE=1` 计数(`0x432224` 逗号、
+  `0x432360/0x432388` 行终止、`0x43225a` EOF 最后一格);`SIZE=0` 且
+  `LINE` 在场时 `0x4322f2` 写行数。
+- **0.495 `CSVINFO[DATA]` = `0x43e660`**:`DATA` 非 0 → `0x43e7e3`
+  解析 CSV,逐格经 `0x43f0d8(var,index,cell)` 写入 `LET` **字符串数组**
+  (类型字节 `+1==3`;容量不足 realloc);`SIZE` 非 0 走 `0x43e71f`
+  计数;两者同时在场先 DATA 后 SIZE。
+- **0.479 `CSV` 序号 7 仍是短桩**(候选入口 `0x43869c`),与 0.495 同形。
+- **`SAVE/LOAD[IDNO]`**:0.495 `SAVE 0x44c4aa..0x44c51c` 与
+  `LOAD 0x4470d1..0x447145` 在同构代码里把 `ID` 拷到临时缓冲,追加
+  `.`(`0x808354`),再经 `0x46a7c0` 追加十进制 `IDNO`,最后交
+  `0x4141e4` 路径规范化 / `0x414559` 层查找。`IDNO` 缺省时层名 = `ID`。
+- **0.466 `__SAVE_PATH_TYPE`(id 77)**:0.466 二进制**不含** `yssfs.dat`,
+  不能按 0.495 `_SAVE_PATH_TYPE` 的 `[0x801324]`/`yssfs.dat` 语义直接
+  别名;0.466 getter 未定位 ⇒ 保持 open(新档 DIV-RT-060)。
+
+### 改动
+
+- `crates/yu-rt/src/vm/handlers.rs`
+  - `build_handler_table` 的 `CSV` 改为**按参数表结构**裁决:
+    表含 `LINE`(0.466)或序号 != 7(v474)→ `HandlerKind::Csv`;
+    否则(0.479/0.495 序号 7)→ `NoopEval`。
+  - `op_csv` 读取 `LINE`,用新增 `parse_csv_cells_lined` 按 1 基行号过滤。
+  - `op_csvinfo` 读取 `DATA`/`LINE`,按表是否含 `LINE` 选 0.466 口径;
+    `DATA` 走新增 `write_csv_cells` 写入字符串数组,`SIZE` 计数,
+    `SIZE=0+LINE` 写行数。
+  - 新增 `count_csv_cells_0466`(EOF 计入最后一格)、`csv_line_count_0466`。
+  - `op_save`/`op_load` 读取 `IDNO`;新增 `compose_layer_id(id,idno)` 生成
+    `ID.N` 后交 `capture_layer`/`restore_layer`。
+- 文档:`DIV-RT-057` 重写为四代 CSV/CSVINFO 对照;新增 `DIV-RT-061`
+  (SAVE/LOAD IDNO)与 `DIV-RT-060`(`__SAVE_PATH_TYPE` open);
+  `coverage-matrix.md` 的 CSV/CSVINFO/SAVE/LOAD 行与 §3 同步。
+
+### 验证
+
+```text
+cargo test -p yu-rt --lib csv_parse_tests
+  → 7 passed(引号/换行/单引号跨行/行号/0.466 计数/行数)
+cargo test -p yu-rt --test fixture csv
+  → 7 passed(0.495 空桩 / v474 解析 / 0.466 LINE 过滤 /
+            CSVINFO[DATA] 写数组 / 0.466 LINE 计数与行数)
+cargo test -p yu-rt --test fixture save_load_idno
+  → 1 passed(captured/restored 层名均为 THUMB.3)
+cargo test -p yu-rt
+  → 113 lib + 129 fixture + consistency 等全绿
+cargo check --workspace --all-targets
+  → 通过
+project-0466 (0.466) game_diag_probe 300 帧
+  → unimplemented_cmds 空;script_errors=0;missing_assets=0
+project-eris (0.495) game_diag_probe 300 帧
+  → 仅 EMOTE:12(deferred);script_errors=0
+```
+
+### 影响边界与残留
+
+- `CSVINFO[DATA]` 的官方 realloc 扩容在本内核受固定变量维长限制:
+  超出 `LET` 容量时停在最后可写下标并挂 `rt.csv`,不静默越界。
+- `CSV` 的处理器选择不再只看序号;0.466 表(含 `LINE`)与 0.479/0.495
+  表(无 `LINE`)走不同分支,均为数据驱动,不写死版本号。
+- `__SAVE_PATH_TYPE` 仍 open(DIV-RT-060);0.466 无 `yssfs.dat`,
+  需 getter REA 或真实引用后再定案。
+- 未执行 git 写操作。
+
+## 成果 ANDROID-10-STORAGE (2026-11-19) · Android 10 及以下补上存储权限,修复选目录无反应
+
+### 1. 问题
+
+Android 10 真机上「选择游戏目录」点了没反应,也从不弹权限框。
+
+根因:`SetupActivity.ensureStorageThen` 无条件调用
+`Environment.isExternalStorageManager()`。该方法是 API 30 才加入的;
+Android 10(API 29)执行到这一行直接抛 `NoSuchMethodError`,后续选目录
+代码根本走不到。另外清单里只有 `MANAGE_EXTERNAL_STORAGE`(Android 11+
+才存在),没有 `READ/WRITE_EXTERNAL_STORAGE`,也没有
+`requestLegacyExternalStorage`:旧系统没有运行时权限可授,内核按
+`/sdcard/...` 真实路径读写仍然会失败。
+
+### 2. 改法
+
+- `android/app/src/main/AndroidManifest.xml`
+  - 新增 `READ_EXTERNAL_STORAGE` / `WRITE_EXTERNAL_STORAGE`,
+    `maxSdkVersion=29`(Android 11+ 由 MANAGE 接管,不重复申请);
+  - `<application>` 加 `requestLegacyExternalStorage="true"`
+    (Android 10 旧存储模型生效;Android 11+ 忽略)。
+- `SetupActivity`
+  - `ensureStorageThen` 按 `Build.VERSION.SDK_INT` 分流:API 30+ 维持
+    「所有文件访问」设置页;API 29 及以下运行时申请 READ/WRITE,
+    在 `onRequestPermissionsResult` 授权后继续刚才的动作;
+  - 选游戏目录、另存目录、导入字体、开始游戏统一走同一道权限闸;
+  - Android 11+ 设置页跳转补兜底:系统没有对应 Activity 时只回显提示,
+    不再抛 `ActivityNotFoundException`。
+
+### 3. 验证
+
+```text
+cd android && gradle :app:compileReleaseJavaWithJavac --no-daemon
+  → 通过(EXIT=0;仅有既有 deprecation 注释)
+```
+
+- 真机点验(Android 10 权限弹框 → 选目录 → 启动读写)由主人完成。
+
+
+## 成果 AND-TYRANOR (2026-11-19) · Tyranor-Next 第三方运行时模块(额外 APK)
+
+> 目标:同一个 Android 壳除普通 `org.yuris.kernel` 外,再发布一份
+> `com.tyranor.runtime.yuris.kernel` 模块 APK,由 Tyranor-Next 的
+> 「引擎模块管理」发现、扫描、派发。未执行 git 写操作。
+
+### 1. 实现
+
+- 构建渠道:`android/app/build.gradle.kts` 增加
+  `-PyurisChannel=standard|tyranor`;tyranor 渠道 applicationId =
+  `com.tyranor.runtime.yuris.kernel`,versionName 追加 `-tyranor`,
+  label = `YU-RIS Kernel (Tyranor)`。
+- 模块入口:`AndroidManifest.xml` 的 `SetupActivity` 声明
+  `com.tyranor.runtime.action.LAUNCH` + `DEFAULT`,并挂
+  `com.tyranor.runtime.MANIFEST = @raw/tyranor_runtime`。
+- `SetupActivity`:消费 `FOLDER_PATH` / `GAME_TITLE` /
+  `PROTOCOL_VERSION` / `SETTINGS`;路径落到与手动选目录同一状态,权限与
+  字体就绪后自动启动;正常退出游戏关闭配置页回到 Tyranor;换游戏时不
+  沿用上一个游戏的自定义存档目录。
+- 声明:`res/raw/tyranor_runtime.json` 增加 `settings`(10 项)与
+  `fileImports`(fonts → `<游戏目录>/fonts/`)。
+- 字体根因修复:`crates/yu-platform/host-android/src/lib.rs` 的
+  `start_engine` 统一加载 `<data_root>/fonts/*.ttf|otf|ttc|otc`
+  (JSON 入口以前不加载),并在没有显式 family / font_file 时把首个已注入
+  字体的第一 family 设为默认。修复前日志
+  `Default(script gave no font) -> unresolvable`,Tyranor「导入字体」
+  实际不会成为正文默认字体。
+- 构建脚本:`tools/android/build.sh` 增加 `YURIS_APK_CHANNEL`;非标准渠道
+  产物落 `target/android-apks/app-tyranor-<type>-<abi>.apk`。
+- CI:`release.yml` 额外构建并归档
+  `yuris-kernel-<tag>-android-tyranor-module.apk`。
+
+### 2. 验证(emulator-5700, x86_64)
+
+```text
+aapt2 dump badging app-release-universal.apk
+  → package org.yuris.kernel versionCode=10 versionName=0.4.1
+    native-code arm64-v8a x86_64
+aapt2 dump badging app-tyranor-release-universal.apk
+  → package com.tyranor.runtime.yuris.kernel versionCode=10
+    versionName=0.4.1-tyranor native-code arm64-v8a x86_64
+
+adb install -r app-tyranor-release-universal.apk → Success
+adb install -r app-tyranor-release-arm64-v8a.apk → Success
+adb shell am start -a com.tyranor.runtime.action.LAUNCH \
+  -n com.tyranor.runtime.yuris.kernel/org.yuris.kernel.SetupActivity \
+  --ei ...PROTOCOL_VERSION 1 \
+  --es ...FOLDER_PATH /sdcard/Download/yugame
+  → yu-android: init: OK ... data=packed:/sdcard/Download/yugame/data.ypf
+    ... font_bytes=1 host_fonts=1 font=SimSun gpu=gl
+  → 无 Default(script gave no font) -> unresolvable
+
+Tyranor-Next 模块管理:
+  → YU-RIS Kernel
+    com.tyranor.runtime.yuris.kernel · 0.3.3-tyranor (1) · 协议 1 · 支持扫描
+  → 游戏抽屉「引擎设置」列出:帧率/虚拟光标/双线性缩放/缺字回退/文本编码/
+    GPU 后端/影片解码/字体/调试日志/状态浮层 + 导入字体
+  → 扫描 /sdcard/TyranorGames 子目录得到 ERIS_demo 卡片
+```
+
+### 3. 发布产物
+
+- `target/android-apks/app-release-universal.apk`(28M,普通包)
+- `target/android-apks/app-release-arm64-v8a.apk`(15M,普通 arm64 瘦包)
+- `target/android-apks/app-tyranor-release-universal.apk`(28M,Tyranor 模块)
+- `target/android-apks/app-tyranor-release-arm64-v8a.apk`(15M,模块 arm64 瘦包)
+- arm64 瘦包已在 emulator-5700(带 ARM 转译)安装并启动成功,
+  `font=SimSun` 一致;`aapt2 dump badging` 的 `native-code` 为
+  `'arm64-v8a'`。
+- 本机无 `YURIS_KEYSTORE_*` 四件套 → 以上 APK 均为 **Android Debug**
+  证书;CI release job 用 secrets 正式签名。
+
+### 4. 补丁 v11:字体下拉最后一项消失
+
+- 现象:从 Tyranor 启动过游戏后,本壳配置页字体下拉的最后一项
+  (已导入字体)消失。
+- 根因:`font` 的声明默认值是 `""`;`applyFontSetting("")` 把
+  `fontPath` / `importedFontName` 清空,`launchGame` 又把空值持久化,
+  下次打开配置页自然重建不出最后一项。
+- 修复:空值视为“宿主没有 per-game 覆盖”,保留模块自己的字体选择;
+  `<游戏目录>/fonts/` 的自动默认仍由内核侧处理。
+- 模块包重打:arm64-v8a / universal,`versionCode=11`,
+  `versionName=0.4.1-tyranor`。已被清掉的旧偏好需要重新导入/选择一次字体。
+
+
+## 成果 CGS-FADE (2026-11-19) · COPY/COPY2 覆盖目标矩形,修复读档黑幕淡出变直接黑屏
+
+**症状**:0.3.3 正常、0.4.0 起读档时「淡出到黑屏」变成直接黑屏并闪烁;
+桌面抓帧(`target/tmp/debug-ui/s1795097882`)显示 `CGS100/CGS999` 幕布层
+在 A=256 时整屏已黑,后续 32 帧 `A-=8` 肉眼不可见。
+
+**根因(回归链)**:
+- `dc545ae`(v0.4.0)在 `CG[FILE=""]` 作用于**已存在**层时把
+  `LayerKind::Image.size` 回写成 1×1(`DIV-GFX-089` 的 RESIZE 修复);
+- 黑幕层 `CGS<n>` 跨界面复用(菜单打开时已建立);读档 `es.CGTSS` 再次
+  `CG CGS100 FILE="" A=0` ⇒ 绘制尺寸 1×1;`CGACT COPY2 ID=:/W0/` 只换
+  texture,绘制仍按 `Image.size` ⇒ 整幅冻结屏幕缩成 1 个像素;菜单层
+  随后被删,屏幕直接黑,32 步淡出全打在该像素上。
+
+**官方取证**(REA Ghidra 12.1.4,0.495 `4f5eefa3…`,
+`ev_ff12409d569c8310749c5aba0eec83c44d24f3f5016376fd14aee71c8438f1c5`):
+`FUN_0042f809` 在动作分派后**无条件**释放目标 `+0x90` 旧表面、挂上按
+区域(`X2-X+1 × Y2-Y+1`)新分配的表面并写 `+0x78/+0x7c`(单层
+0x42f9ef..0x42fa14;双层 0x4305d0..0x4305fe,`MOV [EAX+0x78],ESI`
+@0x4305f4)⇒ `CG[FILE=""]`(`FUN_0040c5f4`)写下的 1×1 矩形在 COPY
+之后不再代表目标层。
+
+**修复**:`cgact_copy` 在把目标纹理换成 `Snapshot` 时清
+`LayerKind::Image.size = None`(内核快照表面按 DIV-GFX-077 保持源尺寸,
+自然尺寸绘制 = 官方「区域尺寸表面 1:1」);`display_rect` 仍记录区域供
+`CGINFO`/`ONMOUSE*`;COPY 之后的 `SIZE/RESIZE/SX/SY` 照旧写回。
+
+**验证**:
+- `cargo test -p yu-gfx` → 全绿;新增
+  `copy2_after_reused_fileless_layer_draws_snapshot_at_natural_size`;
+  `copy2_rect_overrides_stale_explicit_size_and_yields_to_new_cg_size`
+  的绘制尺寸断言更新为 `None`(官方 COPY 覆盖矩形)。
+- `cargo test -p yu-backend-soft` → 全绿。
+- `cargo test -p yu-backend-wgpu` → 39 + 1 + 1 全绿。
+- 桌面实测(0.4.1+<game-b> 读档淡出)待主人验收。
+
+## 成果 README-V555-OFFICIAL (2026-11-20) · README 默认中文,校正 5xx 为官方商业分支
+
+- `README.md` 改为默认简体中文；英文移到 `README.en.md`；
+  `README.zh-CN.md` 保留为跳转页，避免旧链接失效。
+- 5xx 描述从「第三方魔改引擎」校正为「YU-RIS 官方商业分支（商业发行版）」；
+  个别商业样本的第三方重打包/汉化痕迹与引擎归属分开表述。
+- 5xx 支持表更新：v500 封包、v555 七表、剧本链到标题循环；
+  `TEXT[FILE]`、`PRODUCT`、`SAVE/LOAD[MEM]`、`_DROPFILE*`、`VARINFO` 已落地；
+  P0 剩余项（`_STR`/按钮纹理/SPL/背景 CG）列在 README。
+- 增加 v555 原生多语言说明：`scenario/` + `sc_cn_scenario/` + `sc_tw_scenario/`，
+  `config.sd` 语言号，CP932/GBK/Big5；当前 `--patch gbk` 收口见优化计划 O5。
+- 勘误：`README-BETA-SERIES`(2026-11-17) 的「第三方」表述作废。
+- 本轮只改文档；源码/探针改动不随此提交。
+
+## 成果 PATCH-FONT (2026-11-20) · 字体重映射补丁自动加载并强制全部 FONT 请求
+
+**症状**:汉化补丁(`hook.ini` + `qiandong.ttf` + `ysbin/`,浅冬/FONTCHANGER
+同型)在引擎里“一部分乱码、一部分汉化”;手动 `--font` 选该 ttf 仍然混合。
+
+**取证**(样本 `42802_…`,YSTB v466,8 个 `ystNNNNN.ybn`):
+- 标准异或密钥 `D3 6F AC 96`(`CRC32("Yu-ris")`),无换钥/二次加密;
+- 正文**严格 CP932 全部可解**,严格 GBK 在 700+ 段失败——不能按 GBK 解;
+- 解出的不是目标字,而是“载体字”:CP932 解 `髮髮髮髮髮髮。哢釿，鮠釿。`
+  → `qiandong.ttf` 渲染 = `咚咚咚咚咚咚。咔嗒，啪嗒。`;
+- 字体里 **2997 个汉字码位与其他码位共用同一 glyph**:
+  `髮 U+9AEE ↔ 咚 U+549A`、`哢 U+54E2 ↔ 咔 U+5494`、
+  `釿 U+91FF ↔ 嗒 U+55D2`、`鮠 U+9BA0 ↔ 啪 U+556A`。
+- 结论:编码路线是原版 CP932;缺的是**补丁字体**。只设默认字体不够
+  (脚本点名其它 family / `FONT NO` 会绕过),必须像 FONTCHANGER 一样
+  替换全部字体;手动 `--font` 未加 `--font-lock` 时正是“默认字体”语义,
+  所以用户看到混合。
+
+**实现**:
+- `crates/yu-engine/src/patch.rs`:`PatchFont` + `detect_patch_font`
+  (游戏根/`data/` 的 `hook.ini`;`[FONT] FONTFILENAME` 相对 hook 目录、
+  同目录 `fonts/`、游戏根、根 `fonts/` 查找;段/键大小写不敏感;声明了
+  字体但缺失/空文件/超 64MiB 显式报错);`PatchProfile.font` 进
+  `summary()` 与 evidence,编码与字体正交。
+- `crates/yu-engine/src/engine.rs`:`BootBundle` 携带 `PatchFont`,
+  `apply_patch_font` 在渲染器创建前落到字体选择——未指定字体或同 family
+  → 注入并**强制全部 FONT 请求**;选了别的 family 且未锁 → 补丁字体
+  接管;显式 `--font-lock` → 尊重宿主(诊断)。
+- CLI `--font` 帮助补充自动加载说明。
+- `yu-render-soft/wgpu` 暴露 `force_font()` 只读视图;`Engine::forced_font()`
+  供宿主/诊断确认补丁字体是否生效。
+- 新增 `crates/yu-engine/tests/patch_font_boot.rs`(合成工程 + 真实
+  `qiandong.ttf`):启动链端到端断言 `forced_font() == "qiandong"` 与
+  三条优先级分支(默认/未锁覆盖/显式锁)。
+
+**验证**:
+- `cargo test -p yu-engine --lib` → `63 passed; 0 failed`。
+- `cargo test -p yu-engine` → 集成 `capture_snapshot 4` +
+  `patch_font_boot 1` + `project_layout 1` + `text_sync 2` 全绿;
+  `patch_font_boot` 在 `YURIS_SAMPLE_FONT_PATCH` 下实测
+  `family = qiandong`(无样本时用系统字体,两者都无则显式跳过)。
+- `YURIS_SAMPLE_FONT_PATCH=<补丁根> cargo test -p yu-engine --lib patch_font`
+  → `11 passed`(真实 `qiandong.ttf`:family=`qiandong`,三条优先级分支
+  全部断言;未设样本时显式跳过)。
+- `cargo run -p yu-engine --example patch_probe -- target/tmp/fontpatch-proj auto`
+  → `kind=original … font=target/tmp/fontpatch-proj\qiandong.ttf`
+  `evidence=["hook.ini: FONTFILENAME=qiandong.ttf FONTNAME=qiandong"]`。
+- `cargo build --workspace --all-targets` → 通过。注:本机用户目录含中文
+  (`C:\Users\鬼`),mimalloc 生成的 `mimalloc-static.cc` 按 GBK 读源文件会
+  把 include 路径弄坏(`c1xx C1083`,与本改动无关);构建时加
+  `CFLAGS=-utf-8 CXXFLAGS=-utf-8` 即通过。
+- 待主人用实际游戏验收:`auto` 下静态 UI/正文全部使用补丁字体。
+
+## 成果 VER-BADGE (2026-11-20) · 安卓左下角版本名角标(支持绿/不支持红)
+
+**需求**:高级设置新增默认开启的「版本名角标」,在游戏画面**左下角**
+显示 `YU-RIS <版本名>`(右下角已有虚拟鼠标模式按钮);内核支持=绿,
+不支持=红(如 v555)。
+
+**改动**:
+- `crates/yu-engine/src/identity.rs`:新增
+  `supported_engine_version()` / `Identity::engine_supported()`,
+  支持带 = 官方 BETA 4 主线 `0.450–0.495`(README「支持范围」同一口径);
+  BETA 2/3 适配中、第三方 5xx(含 v555)判为不支持。规则只在核内一处。
+- `crates/yu-platform/host-android/src/lib.rs`:启动摘要追加
+  `yuris=<版本名> yuris_supported=<0|1>`(壳不自行比较版本号)。
+- `MainActivity.java`:左下角 TextView,初始化成功后按摘要着色显示;
+  开关关闭时不显示。`SetupActivity.java`:高级设置新增
+  `版本名角标:开/关`,默认开,持久化 `version_badge` 并随 Intent 下发。
+- `android/README.md`:壳侧开关表补一行。
+
+**验证**:
+- `cargo test -p yu-engine --lib supported_range` → `1 passed; 0 failed`。
+- `YURIS_SO_ONLY=1 BUILD_TYPE=release tools/android/build.sh arm64-v8a x86_64`
+  → 两个 ABI 的 so 均编译通过。
+- `BUILD_TYPE=release tools/android/build.sh arm64-v8a` → `BUILD SUCCESSFUL`,
+  产物 `android/app/build/outputs/apk/release/app-release.apk`。
+- 本机无 adb 设备,角标在实机上的位置/颜色待主人验收。
+
+## 成果 SAVE-VER-LAYOUT (2026-11-20) · 存档缩略图块布局按容器版本切换 + SAVE/LOAD 带下标左值修复
+
+**需求**:两个 0.479 商业游戏(`<0.479 商业样本 A>`、`<v479-x>`)qsave 后官方 QLOAD
+读不了;存档页缩略图/hover 异常。主人指出应按目标版本动态选布局,不能写死。
+
+**定位(官方 0.479 exe `0x440490` + 真实存档逐块对照)**:
+- 0.479 图像块(DNO3/btype1)硬校验 `A==0x600`,w/h 在描述符 **+0x70**;
+  本内核旧写端固定 0.495 布局(A=1600、+0x78),官方直接拒收;
+  旧读端还试了误读的 +0x68,官方 0.479 存档缩略图也解不出。
+  版本对照(0.450–0.495 全系列 77 个官方 SDK 包逐一扫 exe):
+  0x0C0 / 0.450–0.466(21 个)= **1520/+0x68**(0.459 `FUN_004382d0` /
+  0.466 `FUN_00438b78` 硬校验 A==0x5F0);0x138 / 0.470–0.479(0.13)
+  = 1536/+0x70;0x1E0 / 0.479(0.14)–0.495 = 1600/+0x78;
+  0x1E1(0.481 商业)/0x1E6(0.49x 商业)同 0x1E0。官方只有这三套布局;
+  0x1DA/0x1EF 是旧内核把 yscfg 版本误当容器版本的历史产物。
+  旧注释把 0.450–0.466 的 +0x68 误记到 0.479,本轮按全系列机器码归位。
+- `SAVE[SET=@x[i][j]]` 旧实现忽略下标,把整组 Int[256,128] 写进 DNO2;
+  官方 `save00001.sd` DNO2 是 Int **标量 14**。官方 LOAD 严格比对
+  块 dims 与 LET 目标 → 维数不符读档失败。`LOAD[LET=@x[i][j]]`
+  的写回同样忽略下标,本内核读回也丢该块。
+
+**改动**:
+- `yu-save/src/profile.rs`(新):**版本档案表** `profile_for(version)`,
+  集中维护图像块布局与块类型 0 var_id;`image_block::layout_for_container_version`
+  只做委托(唯一来源,不再两处 match)。加新版本 = 加一行 + 一条断言。
+  已覆盖 0x0C0(0.459/0.466)=1520/+0x68、0x138=1536/+0x70、
+  0x1DA/0x1E0/0x1E1/0x1E6/0x1EF=1600/+0x78。
+- `yu-save/src/image_block.rs`:`Layout{descriptor_len,wh_offset}`;
+  `encode(image, layout)`;`decode` 以 A 段长度做版本指纹并按
+  `w*h*4==B` 自证;删除 +0x68 误读。
+- `yu-save/src/state.rs`:`flush` 按档案表选布局/var_id;
+  未知版本跳过图像块并挂号 `sv.image.layout`(变量块照常写盘);
+  新增 `error::code::IMAGE_LAYOUT`。
+- `yu-rt/src/vm/handlers.rs`:`var_snapshot_at`(完整下标→标量块、
+  无下标→整组、部分下标不猜);`restore_snapshot` 接收 LET 下标,
+  完整下标只写该元素;op_load 块类型 2 仍按 var_id 恢复整组。
+- 新增 `docs/divergences/DIV-RT-062-save-image-block-version-layout.md`、
+  `docs/divergences/DIV-RT-063-save-indexed-lvalue.md`;
+  `DIV-GFX-071` 校正 0.479 w/h 偏移说明。
+
+**验证**:
+- `YURIS_SAMPLE_SAVE0479=<<0.479 商业样本 A>/save> cargo test -p yu-save --lib`
+  → `30 passed; 0 failed`(含官方 0.479 `save00001.sd` DNO3 实际解码、
+  0.459/0.466 布局往返与档案表覆盖断言)。
+- `cargo test -p yu-rt --test fixture` → `131 passed`(新增
+  `save_set_on_array_element_reserves_scalar_snapshot`、
+  `load_into_array_element_writes_only_that_element`)。
+- `YURIS_SAMPLE_ERIS_YSBIN=<project-eris/data/ysbin> cargo test -p yu-rt
+  --test consistency` → `4 passed`。
+- `cargo test -p yu-format --lib` → `52 passed`;`cargo test -p yu-engine
+  --lib` → `63 passed`;`cargo check -p yu-save -p yu-engine` 通过。
+- 待主人实机:内核 QSAVE → 官方 QLOAD;官方存档 → 内核存档页缩略图/hover。
+
+## 成果 SAVE-SCRIPTPOS-WIRE(2026-11-20)· 存档任务块线格式按版本分代
+
+**问题**:0.47x 商业游戏里内核 qsave 后官方 QLOAD 报
+「スクリプト位置設定先のスクリプトファイル『2\script\...』が存在しません」
+(脚本名首 4 字节 `kuro` 被吃);反向官方 0.47x 存档内核读不了。
+
+**定案**(官方装载器逐指令 + 官方存档逐字节):
+`TASKINFO[SCRIPTPOS]` 串骨架跨版本一致,但 GOSUB 帧计数宽度与尾部 u8
+分代 —— 0.450–0.479(0.13)(容器 `0x0C0`/`0x138`)为 **u16 计数 +
+尾部 u8**(0.450 `0x440515`、0.466 `0x4420bd`、0.470 `0x4428e9`、
+0.474 `0x448f69`、0.479 `0x449f3d/0x449f58`、尾部 `0x44a355`);
+0.480–0.495 / v494(`0x1E0` 系)为 **u8 + 无尾部**(0.480 `0x44fa3a`
+一带、0.495 `0x4511cc`)。官方 0.479 存档两份与 0.495 存档一份均按
+对应代**精确消耗且再编码字节全等**。旧内核只实现了 0.495 代。
+
+**改动**:
+- `yu-rt/src/scriptpos.rs`:`ScriptPosWire`(gosub U8/U16 + tail 开关)、
+  `WIRE_GOSUB_U16`/`WIRE_GOSUB_U8`、`encode_with_wire`/`decode_for_wire`
+  (严格消耗校验;先当前代→另一代→旧内核布局回退)。模块文档重写为
+  已验证的两代表格。
+- `yu-rt/src/vm.rs`:新增 `scriptpos_wire` 字段与 `set/get_scriptpos_wire`。
+- `yu-rt/src/vm/handlers.rs`:`TASKINFO[SCRIPTPOS]` 编码与 LOAD 解码
+  改用注入的线格式。
+- `yu-save/src/profile.rs`:`SaveProfile` 新增 `scriptpos` 列
+  (`0x0C0`/`0x138` → U16;`0x1E0`/`0x1E1`/`0x1E6`/`0x1DA`/`0x1EF` → U8),
+  档案测试加断言。
+- `yu-engine/src/engine.rs`:开机探测到容器版本后按档案表注入 VM。
+- 移除临时探针(`YURIS_DEBUG_LAYER_SIZE`/`YURIS_DEBUG_ONMOUSE`、
+  `probe_map_a`/`probe_save_hover`、`Engine::debug_var_ints`)。
+- 新增 `docs/divergences/DIV-RT-064-save-scriptpos-wire.md`。
+
+**验证**:
+- `cargo test -p yu-rt --lib scriptpos::` → `13 passed`
+  (含官方 0.479 ×2、0.495 ×1 的**逐字节**往返与错代拒绝)。
+- `YURIS_SAMPLE_*` 全设:`cargo test -p yu-rt -p yu-save -p yu-gfx
+  --no-fail-fast` → 全部 `ok`(yu-rt 131、yu-save 30、yu-gfx 各套件)。
+- 待主人实机:0.47x 内核 qsave → 官方 QLOAD;官方 0.47x 存档 → 内核 LOAD。

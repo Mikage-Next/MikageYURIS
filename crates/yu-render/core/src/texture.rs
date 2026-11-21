@@ -1834,11 +1834,18 @@ fn known_extension_format(key: &[u8]) -> Option<ImageFormat> {
 /// 两条路径的输出逐字节相同(`png_libpng_parity` 用例对 1253 张语料做过对拍),
 /// 所以分平台只影响性能,不影响像素。
 fn decode_asset(bytes: &[u8], _tuning: RenderTuning) -> Result<Texture, String> {
-    // YCG (the engine's own format; Erewhon's CHS UI pictures under `.png` names).
+    // YCG：4.7x 商业包把 `.png` 条目存成 YCG 容器（不是 PNG 字节）。
+    // 缺这一层会让所有 47x/48x 包里的 CG/UI 解码失败 → 整屏黑。
+    // 容器布局/字段证据见 `yu_format::ycg` 模块文档(官方 0.479
+    // `FUN_004254e4` @0x4254e4 + `FUN_0048384c` zlib 包装)。
     if yu_format::ycg::is_ycg(bytes) {
-        return yu_format::ycg::decode_rgba(bytes)
-            .map(|(width, height, rgba)| Texture { width, height, rgba })
-            .ok_or_else(|| "malformed YCG picture".to_string());
+        let image = yu_format::ycg::decode(bytes)
+            .map_err(|diag| format!("{}: {}", diag.code, diag.detail))?;
+        return Ok(Texture {
+            width: image.width,
+            height: image.height,
+            rgba: image.rgba,
+        });
     }
     #[cfg(target_os = "android")]
     if is_png(bytes) && _tuning.png_backend == PngBackend::Libpng {

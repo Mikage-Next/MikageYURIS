@@ -163,6 +163,12 @@ impl SoftRenderer {
         self.text.source_summary()
     }
 
+    /// 当前强制字体 family(`None` = 脚本语义;补丁字体/诊断用)。
+    #[must_use]
+    pub fn force_font(&self) -> Option<&str> {
+        self.text.force_font()
+    }
+
     /// 强制所有 `FONT` 请求使用指定 family(`None` = 恢复脚本语义)。
     pub fn set_force_font(&mut self, family: Option<String>) {
         self.text.set_force_font(family);
@@ -997,13 +1003,10 @@ fn apply_copy_op(
     // 内容是初始化清屏色;主组已直绘,因此回退用 `frame.clear` 合成一张
     // 视口大小的初值——与“官方首帧截图 = 启动黑屏”一致,而不是报
     // `offscreen_missing` 跳过。
-    let main_group = frame
-        .windows
-        .iter()
-        .find(|w| w.number == 0)
-        .and_then(|w| w.layer_set.as_ref());
     let source = match &copy.source {
-        CopySource::Group(id) if Some(id) == main_group => {
+        // `Screen` 是**类型化**的屏幕源（gfx 在 COPY 命令处定型）：
+        // 命令时刻有快照契约则合成快照，否则读上次呈现帧；首帧回退清屏色。
+        CopySource::Screen(_) => {
             if let Some(snapshot) = frame.screen_snapshots.get(&copy.id) {
                 compose_screen_snapshot(textures, snapshots, frame, snapshot, st)?
             } else {

@@ -1807,6 +1807,175 @@ fn csv_at_0495_slot_is_noop() {
     );
 }
 
+/// 0.466 表:CSV 序号仍是 7,但参数表带 `LINE` ⇒ 真实解析器 + 行过滤。
+/// 证据:0.466 `0x431970`(`mov eax,7; call` 后按 `[0x650201]` LINE 过滤)。
+#[test]
+fn csv_0466_with_line_param_reads_and_filters_rows() {
+    let mut b = ProjectBuilder::new();
+    b.commands
+        .iter_mut()
+        .find(|c| c.0 == "CSV")
+        .expect("夹具命令表应有 CSV")
+        .1
+        .insert(1, ("LINE", 0, 0));
+    let sys = b.sysvars.len() as u16;
+    b.vars = vec![VarSpec {
+        kind: 1,
+        group: 0,
+        script_id: 0,
+        var_id: sys,
+        value_type: 3,
+        dims: vec![8],
+        init: Init::Str(b""),
+    }];
+    b.labels = vec![("SYSTEM_START", 0, 0, 0)];
+    b.entry(0, 0);
+    let op_csv = opcode_of(&b, "CSV");
+    b.scripts = vec![vec![
+        GroupSpec::new(op_csv)
+            .window(0, ex::sb(b"data/test.csv"))
+            .window(1, ex::i8_(2))
+            .window(2, ex::r#ref(0x24, sys)),
+        GroupSpec::new(OP_END),
+    ]];
+    let mut src = b.build();
+    src.insert(b"data/test.csv", b"a,b\r\nc,d\r\n".to_vec())
+        .unwrap();
+    let mut vm = Vm::boot(Box::new(src), BootConfig::default()).expect("boot");
+    let r = vm.tick_at(0, &no_input());
+    assert!(r.errors.is_empty(), "{:?}", r.errors);
+    let arr = VarRef::new(VarSpace::Dollar, sys);
+    assert_eq!(vm.store().read(arr, &[0]).unwrap(), Value::Str(b"c".to_vec()));
+    assert_eq!(vm.store().read(arr, &[1]).unwrap(), Value::Str(b"d".to_vec()));
+    assert_eq!(
+        vm.store().read(arr, &[2]).unwrap(),
+        Value::Str(Vec::new()),
+        "只写第 2 行,索引从 0 重计"
+    );
+}
+
+/// 0.495 表:CSVINFO[DATA=1] 把单元格写入 LET 字符串数组
+/// (REA `0x43e660` 的 DATA 分支 → `0x43f0d8`)。
+#[test]
+fn csvinfo_data_writes_cells_into_let_array() {
+    let mut b = ProjectBuilder::new();
+    // 默认 [FILE,SIZE,LET] → [FILE,SIZE,DATA,LET]
+    b.commands
+        .iter_mut()
+        .find(|c| c.0 == "CSVINFO")
+        .expect("夹具命令表应有 CSVINFO")
+        .1
+        .insert(2, ("DATA", 0, 0));
+    let sys = b.sysvars.len() as u16;
+    b.vars = vec![VarSpec {
+        kind: 1,
+        group: 0,
+        script_id: 0,
+        var_id: sys,
+        value_type: 3,
+        dims: vec![8],
+        init: Init::Str(b""),
+    }];
+    b.labels = vec![("SYSTEM_START", 0, 0, 0)];
+    b.entry(0, 0);
+    let op_csvinfo = opcode_of(&b, "CSVINFO");
+    b.scripts = vec![vec![
+        GroupSpec::new(op_csvinfo)
+            .window(0, ex::sb(b"data/test.csv"))
+            .window(2, ex::i8_(1))
+            .window(3, ex::r#ref(0x24, sys)),
+        GroupSpec::new(OP_END),
+    ]];
+    let mut src = b.build();
+    src.insert(b"data/test.csv", b"a,b\r\nc,d\r\n".to_vec())
+        .unwrap();
+    let mut vm = Vm::boot(Box::new(src), BootConfig::default()).expect("boot");
+    let r = vm.tick_at(0, &no_input());
+    assert!(r.errors.is_empty(), "{:?}", r.errors);
+    let arr = VarRef::new(VarSpace::Dollar, sys);
+    let want: &[&[u8]] = &[b"a", b"b", b"c", b"d", b""];
+    for (i, cell) in want.iter().enumerate() {
+        assert_eq!(
+            vm.store().read(arr, &[i as i64]).unwrap(),
+            Value::Str(cell.to_vec()),
+            "cell[{i}]"
+        );
+    }
+}
+
+/// 0.466 表:CSVINFO 的 `LINE` 既过滤 SIZE 计数,也可单独返回行数。
+/// 证据:0x466 `0x432050`;`SIZE` 计数含 EOF 最后一格(`0x43225a`),
+/// 纯 `LINE` 写当前行号 `ebp`(`0x4322f2`)。
+#[test]
+fn csvinfo_0466_line_filters_count_and_returns_line_count() {
+    let mut b = ProjectBuilder::new();
+    // 默认 [FILE,SIZE,LET] → [FILE,LINE,SIZE,LET]
+    b.commands
+        .iter_mut()
+        .find(|c| c.0 == "CSVINFO")
+        .expect("夹具命令表应有 CSVINFO")
+        .1
+        .insert(1, ("LINE", 0, 0));
+    let sys = b.sysvars.len() as u16;
+    b.vars = vec![
+        VarSpec {
+            kind: 1,
+            group: 0,
+            script_id: 0,
+            var_id: sys,
+            value_type: 1,
+            dims: vec![],
+            init: Init::Int(0),
+        },
+        VarSpec {
+            kind: 1,
+            group: 0,
+            script_id: 0,
+            var_id: sys + 1,
+            value_type: 1,
+            dims: vec![],
+            init: Init::Int(0),
+        },
+    ];
+    b.labels = vec![("SYSTEM_START", 0, 0, 0)];
+    b.entry(0, 0);
+    let op_csvinfo = opcode_of(&b, "CSVINFO");
+    b.scripts = vec![vec![
+        // SIZE=1 LINE=2 → 第 2 行 2 格
+        GroupSpec::new(op_csvinfo)
+            .window(0, ex::sb(b"data/test.csv"))
+            .window(1, ex::i8_(2))
+            .window(2, ex::i8_(1))
+            .window(3, ex::r#ref(0x40, sys)),
+        // LINE=1(无 SIZE)→ 行数
+        GroupSpec::new(op_csvinfo)
+            .window(0, ex::sb(b"data/test.csv"))
+            .window(1, ex::i8_(1))
+            .window(3, ex::r#ref(0x40, sys + 1)),
+        GroupSpec::new(OP_END),
+    ]];
+    let mut src = b.build();
+    src.insert(b"data/test.csv", b"a,b\r\nc,d\r\n".to_vec())
+        .unwrap();
+    let mut vm = Vm::boot(Box::new(src), BootConfig::default()).expect("boot");
+    let r = vm.tick_at(0, &no_input());
+    assert!(r.errors.is_empty(), "{:?}", r.errors);
+    assert_eq!(
+        vm.store()
+            .read(VarRef::new(VarSpace::At, sys), &[])
+            .unwrap(),
+        Value::Int(2),
+        "SIZE=1 LINE=2 → c,d"
+    );
+    assert_eq!(
+        vm.store()
+            .read(VarRef::new(VarSpace::At, sys + 1), &[])
+            .unwrap(),
+        Value::Int(3),
+        "LINE=1 无 SIZE → 行数 = CR/LF + 1"
+    );
+}
+
 #[test]
 fn missing_table_refuses_boot() {
     // 商业发行版不带 ycd ⇒ 它不是必需表(DIV-RT-016);其余六张必需。
@@ -2549,6 +2718,7 @@ fn task_scrip_pos_restores_full_exec_state() {
         text_line: 7,
         pc: 0,
         script_name: b"data\\script\\fixture0000.yst".to_vec(),
+        tail_byte: 0,
     };
     let raw = synthetic.encode().expect("encode synthetic SCRIPTPOS");
     let mut vm = boot(b);
@@ -6309,6 +6479,59 @@ fn save_id_reserves_layer_image_and_load_id_restores_it() {
     assert_eq!(rec.ends, 1);
 }
 
+/// `SAVE[ID IDNO]` / `LOAD[ID IDNO]`:层名按官方规则拼成 `ID.N`。
+///
+/// REA 0.495 `0x44c4aa..0x44c51c` / `0x4470d1..0x447145`:追加 `.`
+/// (`0x808354`)后 `_ltoa(…,10)`;再交给 `0x4141e4` 路径规范化。
+#[test]
+fn save_load_idno_appends_dotted_suffix() {
+    let mut b = ProjectBuilder::new();
+    let op_save = b.commands.iter().position(|(n, _)| *n == "SAVE").unwrap() as u8;
+    let op_load = b.commands.iter().position(|(n, _)| *n == "LOAD").unwrap() as u8;
+    let op_saveend = b
+        .commands
+        .iter()
+        .position(|(n, _)| *n == "SAVEEND")
+        .unwrap() as u8;
+    b.scripts = vec![vec![
+        // SAVE[DNO=3 ID="THUMB" IDNO=3] → THUMB.3
+        GroupSpec::new(op_save)
+            .window(1, ex::i8_(3))
+            .window(3, ex::s("THUMB"))
+            .window(4, ex::i8_(3)),
+        // LOAD[FILE="lay" DNO=3 ID="THUMB" IDNO=3] → THUMB.3
+        GroupSpec::new(op_load)
+            .window(0, ex::s("lay"))
+            .window(1, ex::i8_(3))
+            .window(3, ex::s("THUMB"))
+            .window(4, ex::i8_(3)),
+        GroupSpec::new(op_saveend),
+        GroupSpec::new(OP_END),
+    ]];
+    b.labels = vec![("SYSTEM_START", 0, 0, 0)];
+    b.entry(0, 0);
+
+    let recorder = SaveRecorder::new();
+    let reply = std::rc::Rc::new(std::cell::RefCell::new(None));
+    let captured = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
+    let restored = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
+    let mut vm = boot(b);
+    vm.set_save_host(Box::new(SharedHost {
+        inner: recorder.clone(),
+        reply,
+    }));
+    vm.set_graphics_host(Box::new(PixelHost {
+        captured: captured.clone(),
+        restored: restored.clone(),
+    }));
+    let report = vm.tick_at(0, &no_input());
+    assert!(report.errors.is_empty(), "{:?}", report.errors);
+
+    let want = b"THUMB.3".to_vec();
+    assert_eq!(captured.borrow().as_slice(), &[(want.clone(), sample_image())]);
+    assert_eq!(restored.borrow().as_slice(), &[(want, sample_image())]);
+}
+
 fn int_snap(vals: &[i64], dims: &[u32]) -> VarSnapshot {
     VarSnapshot {
         ty: yu_rt::value::ElemType::Int,
@@ -6442,6 +6665,125 @@ fn save_load_loop_records_reserve_flush_and_writes_back() {
         .find(|a| a.slot == 2)
         .expect("LET 槽在事件里");
     assert_eq!(let_ref.reference, Some(VarRef::new(VarSpace::At, sys + 1)));
+}
+
+/// `SAVE[DNO SET=@x[i][j]]`:块内容 = 该下标处的**标量元素**,不是整组。
+///
+/// 0.479 官方 save00001 DNO=2 实证:脚本目标 `@0x45d[0x8d][1]` 存成
+/// Int 标量 14,而变量本身是 Int[256,128]。旧实现忽略 `lv.indices`、
+/// 快照整组 → 块变 Int[256,128],官方 QLOAD 的严格维数比对失败
+/// (`FUN_00440490` 0x440c22..),qsave 官方读不了。
+#[test]
+fn save_set_on_array_element_reserves_scalar_snapshot() {
+    let mut b = ProjectBuilder::new();
+    let sys = b.sysvars.len() as u16;
+    b.vars = vec![VarSpec {
+        kind: 1,
+        group: 0,
+        script_id: 0,
+        var_id: sys,
+        value_type: 1,
+        dims: vec![3, 4],
+        init: Init::Int(5),
+    }];
+    let op_save = b.commands.iter().position(|(n, _)| *n == "SAVE").unwrap() as u8;
+    let op_saveend = b
+        .commands
+        .iter()
+        .position(|(n, _)| *n == "SAVEEND")
+        .unwrap() as u8;
+    // `@x[1][2]` 的真实字节形:ref, 1, 0x2c(组分隔), 2, 0x29(取值)。
+    let elem = ex::cat(&[
+        ex::r#ref(0x40, sys),
+        ex::i8_(1),
+        ex::op(0x2c),
+        ex::i8_(2),
+        ex::aload(),
+    ]);
+    let groups = vec![
+        GroupSpec::new(op_save)
+            .window(1, ex::i8_(2))
+            .window(2, elem),
+        GroupSpec::new(op_saveend),
+        GroupSpec::new(OP_END),
+    ];
+    b.scripts = vec![groups];
+    b.labels = vec![("SYSTEM_START", 0, 0, 0)];
+    b.entry(0, 0);
+    let recorder = SaveRecorder::new();
+    let reply = std::rc::Rc::new(std::cell::RefCell::new(None));
+    let mut vm = boot(b);
+    vm.set_save_host(Box::new(SharedHost {
+        inner: recorder.clone(),
+        reply,
+    }));
+    let report = vm.tick_at(0, &no_input());
+    assert!(report.errors.is_empty(), "{:?}", report.errors);
+    let rec = recorder.borrow();
+    assert_eq!(rec.reserves.len(), 1, "{:?}", rec.reserves);
+    let (dno, var, snap) = &rec.reserves[0];
+    assert_eq!(*dno, 2);
+    assert_eq!(*var, VarRef::new(VarSpace::At, sys));
+    assert!(
+        snap.dims.is_empty(),
+        "数组元素必须写标量块,实际 dims={:?}",
+        snap.dims
+    );
+    assert_eq!(snap.data, vec![Value::Int(5)]);
+}
+
+/// `LOAD[LET=@x[i][j]]`:标量块只写该元素,其余元素保持原值。
+/// 与 `save_set_on_array_element_reserves_scalar_snapshot` 成对;旧实现
+/// 把整块写回整个变量(元素数不符 → 恢复被拒),qload 丢变量。
+#[test]
+fn load_into_array_element_writes_only_that_element() {
+    let mut b = ProjectBuilder::new();
+    let sys = b.sysvars.len() as u16;
+    b.vars = vec![VarSpec {
+        kind: 1,
+        group: 0,
+        script_id: 0,
+        var_id: sys,
+        value_type: 1,
+        dims: vec![3, 4],
+        init: Init::Int(5),
+    }];
+    let op_load = b.commands.iter().position(|(n, _)| *n == "LOAD").unwrap() as u8;
+    let elem = ex::cat(&[
+        ex::r#ref(0x40, sys),
+        ex::i8_(1),
+        ex::op(0x2c),
+        ex::i8_(2),
+        ex::aload(),
+    ]);
+    let groups = vec![
+        GroupSpec::new(op_load)
+            .window(0, ex::s("elem.sd"))
+            .window(1, ex::i8_(1))
+            .window(2, elem),
+        GroupSpec::new(OP_END),
+    ];
+    b.scripts = vec![groups];
+    b.labels = vec![("SYSTEM_START", 0, 0, 0)];
+    b.entry(0, 0);
+    let recorder = SaveRecorder::new();
+    let reply = std::rc::Rc::new(std::cell::RefCell::new(Some(LoadedBlock {
+        vars: vec![LoadedVar {
+            var: None,
+            snap: int_snap(&[42], &[]),
+        }],
+    })));
+    let mut vm = boot(b);
+    vm.set_save_host(Box::new(SharedHost {
+        inner: recorder.clone(),
+        reply,
+    }));
+    let report = vm.tick_at(0, &no_input());
+    assert!(report.errors.is_empty(), "{:?}", report.errors);
+    let var = VarRef::new(VarSpace::At, sys);
+    assert_eq!(vm.store().read(var, &[1, 2]).unwrap(), Value::Int(42));
+    assert_eq!(vm.store().read(var, &[0, 0]).unwrap(), Value::Int(5));
+    assert_eq!(vm.store().read(var, &[2, 3]).unwrap(), Value::Int(5));
 }
 
 /// 存档脚本的「先删旧槽(pc315)、再 `SAVE[FILE]`(pc341)」必须在同一帧里
@@ -6935,17 +7277,22 @@ fn textinfo_cx_cy_follow_layout_cursor() {
     // 合成样本没有 gfx 层;注入目标层表面尺寸(引擎在 tick 前从 gfx 查询)。
     vm.set_text_window(Some((800, 600)));
     vm.tick_at(0, &no_input());
-    assert_eq!(vm.text_state().flags, vec![0x31, 0x31, b'R', b'E'], "flags after tick1");
-    let after1 = vm.text_state();
     assert_eq!(
-        (after1.cursor_x, after1.cursor_y),
-        (0, 0),
-        "tick1 尚未布局"
+        vm.text_state().flags,
+        vec![0x31, 0x31, b'R', b'E'],
+        "flags after tick1"
     );
+    let after1 = vm.text_state();
+    assert_eq!((after1.cursor_x, after1.cursor_y), (0, 0), "tick1 尚未布局");
     vm.tick_at(16, &no_input());
     let dbg = vm.text_state();
     assert_eq!(
-        (dbg.cursor_x, dbg.cursor_y, dbg.reveal_flags, dbg.bytes.len()),
+        (
+            dbg.cursor_x,
+            dbg.cursor_y,
+            dbg.reveal_flags,
+            dbg.bytes.len()
+        ),
         (0, 20, 0, 0),
         "layout cursor/flags after tick2"
     );

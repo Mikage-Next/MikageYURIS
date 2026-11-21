@@ -530,9 +530,7 @@ pub trait TextureSampler {
 /// 语义相同(图层 ID 的十进制后缀,`path::normalize` 已实现)。只在表里
 /// **没有** `IDNO` 时改名,避免把将来同时出现两种名字的表误读。
 /// `CG` 的 `TNO` 与 0.495 的 `TIDNO` 同型(过渡源图层号)。
-fn alias_legacy_layer_names(
-    names: Vec<Option<std::rc::Rc<str>>>,
-) -> Vec<Option<std::rc::Rc<str>>> {
+fn alias_legacy_layer_names(names: Vec<Option<std::rc::Rc<str>>>) -> Vec<Option<std::rc::Rc<str>>> {
     let has = |target: &str| names.iter().flatten().any(|n| &**n == target);
     let idno = has("IDNO");
     let tidno = has("TIDNO");
@@ -725,9 +723,7 @@ impl GfxState {
         let pending: Vec<(CopyId, CopyRegion)> = self
             .snapshot_files
             .iter()
-            .filter(|(id, file)| {
-                file.as_slice() == key && !self.snapshot_sizes.contains_key(id)
-            })
+            .filter(|(id, file)| file.as_slice() == key && !self.snapshot_sizes.contains_key(id))
             .map(|(id, _)| {
                 (
                     *id,
@@ -1342,6 +1338,8 @@ impl GfxState {
             }
             let source_live = match &c.source {
                 CopySource::Layer(id) | CopySource::Group(id) => self.nodes.contains_key(id),
+                // 主窗口屏幕始终存在（窗口在引擎启动时建立）。
+                CopySource::Screen(_) => true,
             };
             if c.status == OpStatus::Executable && !source_live && c.source_texture.is_none() {
                 continue;
@@ -2240,8 +2238,10 @@ impl GfxState {
                 }
                 _ => Vec::new(),
             }),
-            "SX" => Value::Int(self.query_layer_size(layer, true)?),
-            "SY" => Value::Int(self.query_layer_size(layer, false)?),
+            "SX" | "SY" => {
+                let value = self.query_layer_size(layer, flag == "SX")?;
+                Value::Int(value)
+            }
             // `TEX` = **图层种类码**(REA CGINFO `0x43d962`:
             // `movsx ecx, byte [层+0xa4]`):1 = 图像层,2 = 图层组,0 = 已删。
             // 它不是 `CG[TEX=]` 的写入值回读;`CG[TEX=1]` 在官方是“把空层
@@ -2425,16 +2425,132 @@ impl GfxState {
                 _ => (lx, ly),
             },
         };
-        let Some(px) = sampler.sample(&texture, tx, ty) else {
+        let Some(mut px) = sampler.sample(&texture, tx, ty) else {
             return Ok(Value::Int(-1));
         };
+        // 隐形层(`E=0`)全透明像素 → 穿透到下方可见内容(DIV-GFX-090)。
+        // `COLOR` 有语料钉值(es_Button pc2020 `0x00808080`),不走此路径。
+        if px == [0, 0, 0, 0] && !layer.visible && flag != "COLOR" {
+            if let Some(below) = self.sample_beneath(layer, mx, my, sampler) {
+                px = below;
+            }
+        }
         let rgb = i64::from(px[0]) | (i64::from(px[1]) << 8) | (i64::from(px[2]) << 16);
-        Ok(Value::Int(match flag {
+        let result = match flag {
             "ONMOUSE2" => i64::from(px[3]),
             "ONMOUSE3" => i64::from((rgb as i32) | (i64::from(px[3]) as i32) << 24),
             // `rgb` 是 24 位无符号;引擎的 32 位结果对 ONMOUSE 不会溢出符号位。
             _ => rgb,
-        }))
+        };
+        Ok(Value::Int(result))
+    }
+
+    /// `CGINFO[ONMOUSE*]` 隐形层全透明像素的**穿透采样**(DIV-GFX-090)。
+    ///
+    /// 背景:官方手册(cg/cginfo.html 例[8])称 ONMOUSE 返回"该坐标图层
+    /// 的 RGB 值";但 0.479 两个商业样本的按钮 MASK(`cgsys/saveload/
+    /// btn_plate*_mask`)是 **100% 全透明占位图**(两段 zlib 解出 544×133×4
+    /// 全零,逐像素核验),而游戏脚本(`s99` pc83/84 等)仍设
+    /// `es.BT.MAP.CG.SET <全零mask>` + `es.BT.MAP.A.SET 1`,hover 判定
+    /// `@over=(@col>=1)`。官方实机该界面 hover 正常 ⇒ 官方对这块全零
+    /// mask 读到的 `@col ≥ 1` —— 非零的唯一来源是它下方合成出的可见
+    /// 内容(槽位边框由 `back_save` 背景层绘制;`btn_plate_off` 同为全零
+    /// 占位)。即官方对隐形层读到的是**穿透后的合成结果**。
+    ///
+    /// 本内核没有屏幕合成采样面(B7 宿主面未落地),用逐层近似:取同坐标
+    /// 命中、`z ≤ 查询层` 的**可见**图层,按 `(z, seq)` 降序(最近在下者
+    /// 先),返回首个非零像素;`RECTPAINT` 实色层(`fill`)直接取实色。
+    /// 可见层自身像素语义不变;全语料核验无回归:kotoneiro mask 全不透明、
+    /// v555-2 号样本 mask 为 RGB 无 alpha,均不触发本路径。
+    fn sample_beneath(
+        &self,
+        top: &Layer,
+        mx: i64,
+        my: i64,
+        sampler: &mut dyn TextureSampler,
+    ) -> Option<[u8; 4]> {
+        let mut beneath: Vec<&Layer> = self
+            .nodes
+            .values()
+            .map(|n| n.layer.as_ref())
+            .filter(|l| {
+                // 只取**绘制序在查询层之前**(= 其下方)的可见图像层:
+                // `frame()` 按 `(z, seq, id)` 升序绘制,大 z 在前(上面)。
+                l.visible
+                    && (l.z, l.seq) < (top.z, top.seq)
+                    && l.id != top.id
+                    && matches!(l.kind, LayerKind::Image { .. })
+            })
+            .collect();
+        beneath.sort_by(|a, b| (b.z, b.seq).cmp(&(a.z, a.seq)));
+        for l in beneath {
+            let x0 = l.transform.x.floor() as i64;
+            let y0 = l.transform.y.floor() as i64;
+            // `RECTPAINT` 实色层:命中且非全零才取实色(零填色不遮挡下层)。
+            if let Some(fill) = l.fill {
+                if fill != [0, 0, 0, 0] && mx >= x0 && my >= y0 {
+                    if let Some(size) = l.image_size() {
+                        if mx < x0 + i64::from(size.width) && my < y0 + i64::from(size.height) {
+                            return Some(fill);
+                        }
+                    }
+                }
+                continue;
+            }
+            // 快照层按源资产采样(与 query_onmouse 主路径同口径)。
+            let snapshot_file = match &l.texture {
+                TextureRef::Snapshot(id) => self.snapshot_files.get(id).cloned(),
+                _ => None,
+            };
+            let asset_snapshot = snapshot_file.is_some();
+            let texture = match snapshot_file {
+                Some(key) => TextureRef::Asset(key),
+                None => l.texture.clone(),
+            };
+            let texture_size = sampler.size(&texture);
+            let display = l
+                .display_rect
+                .and_then(|id| self.snapshot_display_size(id))
+                .or_else(|| l.image_size())
+                .or(texture_size)
+                .or_else(|| match &texture {
+                    TextureRef::Asset(key) => self.asset_sizes.get(key).copied(),
+                    _ => None,
+                });
+            let Some(display) = display else { continue };
+            if display.width == 0 || display.height == 0 {
+                continue;
+            }
+            let lx = mx - x0;
+            let ly = my - y0;
+            if lx < 0 || ly < 0 || lx >= i64::from(display.width) || ly >= i64::from(display.height)
+            {
+                continue;
+            }
+            let (tx, ty) = match (&l.texture, asset_snapshot) {
+                (TextureRef::Snapshot(id), true) => {
+                    let region = self.snapshot_sizes.get(id).copied().unwrap_or(display);
+                    let (ox, oy) = self.snapshot_origins.get(id).copied().unwrap_or((0, 0));
+                    (
+                        ox + lx * i64::from(region.width) / i64::from(display.width),
+                        oy + ly * i64::from(region.height) / i64::from(display.height),
+                    )
+                }
+                _ => match texture_size {
+                    Some(size) if size.width > 0 && size.height > 0 => (
+                        lx * i64::from(size.width) / i64::from(display.width),
+                        ly * i64::from(size.height) / i64::from(display.height),
+                    ),
+                    _ => (lx, ly),
+                },
+            };
+            if let Some(px) = sampler.sample(&texture, tx, ty) {
+                if px != [0, 0, 0, 0] {
+                    return Some(px);
+                }
+            }
+        }
+        None
     }
 
     fn query_layer_size(&self, layer: &Layer, width: bool) -> Result<i64, Diag> {
@@ -4242,6 +4358,9 @@ impl GfxState {
             return;
         }
         let source_is_group = self.nodes[source].layer.is_group();
+        // 主窗口 `:/W0/` = 屏幕表面，不是离屏组：类型在这里定型，后端不再
+        // 按窗口表推断（`CopySource::Screen`）。
+        let source_is_screen = source_is_group && self.is_main_group(source);
         if !self.nodes.contains_key(dest) {
             // 手册 cg/cgact.html 例 30:目标层可作为复制结果出现。
             self.create_image(dest, TextureRef::None, None);
@@ -4294,6 +4413,8 @@ impl GfxState {
         // `COPY2` 切片 → 全部按钮建完后 `CGEND[BT.OFF.TMP]`)。本内核的纹理
         // pass 在帧末回放,那时源节点已不存在;记录当时的 `TextureRef` 才能
         // 按官方语义重放。组源不需要(它按组 id 自合成)。
+        // `Layer` 才有命令时刻基础纹理；`Group`/`Screen` 由后端按各自
+        // 契约取像素（组=成员现绘，屏幕=上次呈现帧/命令时刻快照）。
         let source_texture = if source_is_group {
             None
         } else {
@@ -4343,7 +4464,9 @@ impl GfxState {
             seq,
             id: copy_id,
             kind,
-            source: if source_is_group {
+            source: if source_is_screen {
+                CopySource::Screen(source.clone())
+            } else if source_is_group {
                 CopySource::Group(source.clone())
             } else {
                 CopySource::Layer(source.clone())
@@ -4402,7 +4525,7 @@ impl GfxState {
             // (`group_surface_size` 在 soft/wgpu 同式,主组与子组一致)。
             // 旧实现只给主窗口组回退视口,子组快照因此没有尺寸:
             // `CGINFO[SX/SY]` 报「快照纹理尺寸未记录」,脚本按 0/旧值布局
-            // (本次 aorio 实跑 `es_sprite.yst@6519/6520` 6 条实测;
+            // (本次 <0.474 样本> 实跑 `es_sprite.yst@6519/6520` 6 条实测;
             // 2026-11-03 真机 `快照纹理 345` 同族)。
             snap_size = self
                 .nodes
@@ -4424,19 +4547,19 @@ impl GfxState {
                     width: m.width,
                     height: m.height,
                 }),
-                TextureRef::None | TextureRef::SolidBlack1x1 => src_node
-                    .layer
-                    .image_size()
-                    .or_else(|| {
+                TextureRef::None | TextureRef::SolidBlack1x1 => {
+                    src_node.layer.image_size().or_else(|| {
                         // 官方 `CG[FILE=""]` 的层构造默认矩形就是 1×1
                         // (`FUN_0040c5f4` 写 `+0x78/+0x7c=1`)。`COPY2` 的
                         // 快照显示尺寸因此是 1×1，不是“无尺寸”。
-                        matches!(src_node.layer.texture, TextureRef::SolidBlack1x1)
-                            .then_some(SizeU32 {
+                        matches!(src_node.layer.texture, TextureRef::SolidBlack1x1).then_some(
+                            SizeU32 {
                                 width: 1,
                                 height: 1,
-                            })
-                    }),
+                            },
+                        )
+                    })
+                }
             };
         }
         // `COPY/COPY2` 局部区域:官方 `FUN_0042f809` 在动作执行后**无条件**
@@ -4452,7 +4575,7 @@ impl GfxState {
         // 旧实现把源表面尺寸当作快照尺寸 ⇒ `CGINFO[SX]` 返回整张状态合图
         // (按钮宽 × 4),`es.BT.MOUSECHECK` 的命中矩形覆盖四个按钮:
         // 置灰按钮被跳过时相邻按钮的矩形接住 hover,显示成“不能点的按钮
-        // 却高亮了旁边的按钮”(2026-11-11 kotoneiro 实测)。
+        // 却高亮了旁边的按钮”(2026-11-11 <game-b> 实测)。
         //
         // 区域原点对 `COPY` 同样有效(局部复制都写到目标 `(0,0)`)。
         let mut snap_origin = None;
@@ -4484,12 +4607,26 @@ impl GfxState {
         if let Some(node) = self.nodes.get_mut(dest) {
             let layer = Arc::make_mut(&mut node.layer);
             layer.texture = TextureRef::Snapshot(copy_id);
-            // 官方 `FUN_0042f809` 在 COPY/COPY2 动作后**无条件**把目标
-            // `+0x78/+0x7c` 写成区域尺寸(0x4305f4/0x4305fe);之后
-            // `CGINFO[SX/SY]`/`ONMOUSE*` 读的就是这个矩形。只记来源,
-            // 查询期按 `snapshot_display_size` 解析(资产晚到可回填);
-            // `LayerKind::Image.size` 仍是绘制/目标表面尺寸,不在这里改
-            // (DIV-GFX-077;wgpu 快照分配依赖它作为目标尺寸提示)。
+            // 官方 `FUN_0042f809` 在 COPY/COPY2 动作后**无条件**替换目标
+            // 表面并改写矩形:旧 `+0x90` 表面释放,挂上按区域尺寸新分配的
+            // 表面,再写 `+0x78/+0x7c = 区域尺寸`(单层 0x42f9ef..0x42fa14,
+            // 双层 0x4305f4/0x4305fe:`MOV [EAX+0x78],ESI` / `MOV [EAX+0x7c],EDI`)。
+            // 因此 COPY 前遗留的矩形(典型是 `CG[FILE=""]` 写下的 1×1,
+            // `FUN_0040c5f4`)不再代表目标层。
+            //
+            // 内核快照表面保持**源表面尺寸**(DIV-GFX-077 的既有残留:区域
+            // 块写在 (0,0),其余透明),与官方“区域尺寸表面”逐像素等价;
+            // 对应的绘制尺寸就是表面自然尺寸,所以这里必须清掉 COPY 前的
+            // `LayerKind::Image.size`。否则跨界面复用的 CGS 幕布层(菜单
+            // 打开时建过,读档时再次 `CG CGS<n> FILE="" A=0` 被重置成
+            // 1×1)会把整幅冻结屏幕缩成 1 个像素:读档淡出直接黑屏
+            // (2026-11-19 回归,引入自 `dc545ae` 的 FILE="" 矩形回写)。
+            //
+            // 显示/命中矩形仍由 `display_rect` 表达(`CGINFO`/`ONMOUSE*`
+            // 查询期按 `snapshot_display_size` 解析,资产晚到可回填);
+            // COPY 之后脚本写 `SIZE/RESIZE/SX/SY` 会重新写 `Image.size`
+            // 并清掉 `display_rect`(官方同一 `+0x78/+0x7c`)。
+            layer.kind = LayerKind::Image { size: None };
             layer.display_rect = Some(copy_id);
             layer.fill = None;
             layer.set_texture_status(match status {
@@ -4555,10 +4692,7 @@ impl GfxState {
         let Some(to) = to else {
             self.push_diag(
                 "CGACT",
-                error::recoverable(
-                    error::code::ARG_MISSING,
-                    format!("{label} 缺 ID2(第二源)"),
-                ),
+                error::recoverable(error::code::ARG_MISSING, format!("{label} 缺 ID2(第二源)")),
             );
             return;
         };
@@ -6578,9 +6712,10 @@ impl GfxState {
         // 快路径(#8):与上一次诊断同键时零分配。演出期重复诊断(缺层
         // CGEND/轮询/幂等空操作)占绝大多数;旧实现每次都要
         // `format!("s{script}")` + 键三元组分配 + `FrameDiag::new` 克隆。
-        let same_as_last = self.last_diag_key.as_ref().is_some_and(|k| {
-            k.0 == d.code.as_ref() && k.1 == command && k.2 == d.detail
-        });
+        let same_as_last = self
+            .last_diag_key
+            .as_ref()
+            .is_some_and(|k| k.0 == d.code.as_ref() && k.1 == command && k.2 == d.detail);
         if same_as_last {
             // 位置标签只按脚本号缓存,已登记位置不构造 `DiagAt`。
             let cur = self.cur_call;
@@ -6597,11 +6732,8 @@ impl GfxState {
             }
         }
         let at = self.diag_at();
-        let key: std::rc::Rc<(String, String, String)> = std::rc::Rc::new((
-            d.code.to_string(),
-            command.to_string(),
-            d.detail.clone(),
-        ));
+        let key: std::rc::Rc<(String, String, String)> =
+            std::rc::Rc::new((d.code.to_string(), command.to_string(), d.detail.clone()));
         match self.diags.get_mut(&*key) {
             Some(existing) => {
                 existing.count = existing.count.saturating_add(1);
@@ -6688,9 +6820,10 @@ impl GfxState {
                 .get(group)
                 .and_then(|node| node.layer.group_size())
                 .or_else(|| Some(viewport_to_size(self.config.viewport))),
-            TextureRef::SolidBlack1x1 => layer
-                .image_size()
-                .or(Some(SizeU32 { width: 1, height: 1 })),
+            TextureRef::SolidBlack1x1 => layer.image_size().or(Some(SizeU32 {
+                width: 1,
+                height: 1,
+            })),
             TextureRef::None => None,
         }
     }
@@ -7235,7 +7368,13 @@ fn snapshot_region_display(
     }
     if size.width == 0 || size.height == 0 {
         // 0×0 源(资产装载失败时 VM 回填):官方层矩形保持 0,不是“无尺寸”。
-        return Some((SizeU32 { width: 0, height: 0 }, None));
+        return Some((
+            SizeU32 {
+                width: 0,
+                height: 0,
+            },
+            None,
+        ));
     }
     let max_x = i64::from(size.width - 1);
     let max_y = i64::from(size.height - 1);
@@ -7726,6 +7865,10 @@ fn hash_copy_op(h: &mut impl Hasher, copy: &CopyOp) {
         }
         CopySource::Group(id) => {
             1u8.hash(h);
+            id.hash(h);
+        }
+        CopySource::Screen(id) => {
+            2u8.hash(h);
             id.hash(h);
         }
     }
@@ -8285,7 +8428,7 @@ fn apply_layer_params(
         // 尺寸写入时参与缺省轴计算。否则 `CG[ID=$off E=0 X=… MODE=…]`
         // 这类按钮状态层的属性更新会把 COPY 区域尺寸写进
         // `LayerKind::Image.size`,把源尺寸快照压扁(DIV-GFX-077 的
-        // 回归;kotoneiro 底部按钮实测)。
+        // 回归;<game-b> 底部按钮实测)。
         let current = if sx.is_some() || sy.is_some() {
             copy_rect.unwrap_or_else(|| layer.image_size())
         } else {
